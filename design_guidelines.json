@@ -1,0 +1,123 @@
+{
+  "project_name": "PodcastMe",
+  "theme": {
+    "archetype": "Archetype 5: Jewel & Luxury (Modified with Dark/Neon accents)",
+    "mode": "Dark mode only",
+    "description": "A premium, high-end SaaS tool with electric neon accents against a pure dark canvas. No standard tech-blue templates."
+  },
+  "colors": {
+    "css_variables": {
+      "--bg-primary": "#0A0A0A",
+      "--bg-card": "#141414",
+      "--bg-input": "#1E1E1E",
+      "--accent-purple": "#8B5CF6",
+      "--accent-pink": "#EC4899",
+      "--success": "#10B981",
+      "--warning": "#F59E0B",
+      "--text-primary": "#F9FAFB",
+      "--text-muted": "#6B7280",
+      "--border": "#2D2D2D"
+    },
+    "guidelines": {
+      "backgrounds": "Use var(--bg-primary) for the main body, var(--bg-card) for content sections.",
+      "accents": "Use the purple and pink as sharp, intentional highlights. Create gradients with them sparingly, like 'bg-gradient-to-r from-[color:var(--accent-purple)] to-[color:var(--accent-pink)]'.",
+      "borders": "1px solid var(--border). Never rely solely on shadows for cards.",
+      "glows": "Subtle neon dropshadows on primary actions. E.g., 'drop-shadow-[0_0_8px_rgba(139,92,246,0.3)]'."
+    }
+  },
+  "typography": {
+    "font_family": "Inter, system-ui, sans-serif",
+    "headings": {
+      "font_weight": "font-black or font-extrabold",
+      "letter_spacing": "tracking-tighter",
+      "line_height": "leading-none",
+      "styling": "Capitalize key words. Use the 'Inter' system sans but with intense weight contrast to body text."
+    },
+    "body": {
+      "font_weight": "font-normal",
+      "letter_spacing": "tracking-normal",
+      "line_height": "leading-relaxed",
+      "color": "var(--text-muted)"
+    },
+    "labels": {
+      "styling": "uppercase tracking-[0.2em] text-xs font-semibold text-[color:var(--text-muted)]"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing. Allow the dark canvas to breathe.",
+    "containers": "Max width 'max-w-7xl' centered. Use 'p-8' or 'p-12' on cards instead of the standard 'p-4'.",
+    "grids": "Use 'MODE B: THE CONTROL ROOM GRID' for Output and 'MODE A: TETRIS GRID' for the Hero and Setup sections.",
+    "cards": "Subtle rounded corners (rounded-xl or rounded-2xl), background var(--bg-card), 1px solid var(--border)."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-gradient-to-r from-[color:var(--accent-purple)] to-[color:var(--accent-pink)] text-white font-bold rounded-lg px-6 py-3 transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(139,92,246,0.4)]",
+      "secondary": "bg-[color:var(--bg-input)] text-[color:var(--text-primary)] border border-[color:var(--border)] rounded-lg px-6 py-3 transition-all duration-300 ease-in-out hover:scale-[1.02] hover:bg-[#2A2A2A]"
+    },
+    "inputs": {
+      "text": "bg-[color:var(--bg-input)] border border-[color:var(--border)] text-[color:var(--text-primary)] rounded-lg p-4 w-full focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-purple)] transition-all duration-300"
+    },
+    "waveforms": {
+      "animation": "CSS/JS-driven bar height scaling. Multiple rounded divs spanning vertically, animated with standard CSS keyframes simulating audio frequency."
+    },
+    "status_indicators": {
+      "listening": "Pulsing var(--success) dot.",
+      "speaking": "Animated waveform using var(--accent-purple) and var(--accent-pink).",
+      "thinking": "Slow opacity pulse on an orb or minimal dot sequence."
+    }
+  },
+  "interactions": {
+    "transitions": "All state changes must use 'transition-all duration-300 ease-in-out'.",
+    "hover_states": "Buttons scale(1.02) and emit a subtle glow shadow.",
+    "focus_states": "Inputs receive a 2px ring of var(--accent-purple) with zero offset."
+  },
+  "accessibility": {
+    "contrast": "Ensure var(--text-muted) passes contrast against var(--bg-card). Use text-shadow on text placed over abstract imagery if necessary.",
+    "testing": "All interactive elements MUST include 'data-testid' attributes (e.g., 'data-testid=\"start-episode-button\"')."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1648237409808-aa4649c07ec8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwcG9kY2FzdCUyMG1pY3JvcGhvbmUlMjBuZW9ufGVufDB8fHx8MTc3NTE1MTUyOXww&ixlib=rb-4.1.0&q=85",
+        "category": "hero_background",
+        "description": "Dark room microphone with neon lights. Use behind a dark gradient overlay (e.g., from-[#0A0A0A] to-transparent) on the Hero screen."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1762278805116-118893051302?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWJzdHJhY3QlMjBnbG93aW5nJTIwd2F2ZXxlbnwwfHx8fDE3NzUxNTE1MzB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "generation_screen_art",
+        "description": "Abstract purple and white wavy lines on black background. Use as an animated rotating or panning background element on the GENERATION loading screen."
+      }
+    ]
+  },
+  "screens": {
+    "hero": {
+      "layout": "Centered massive typography with the hero_background image heavily overlaid with black gradient to ensure text readability.",
+      "elements": "Brand logo, ultra-bold tagline (H1), subtle subtext, and 'Start My Episode' primary CTA button."
+    },
+    "voice_setup": {
+      "layout": "Clean, single-column focused form centered on the screen. Generous spacing between inputs.",
+      "elements": "5 input fields (Name, Archetype, Controversy Level, Show Name, Energy Word). Prominent 'Next' button."
+    },
+    "conversation": {
+      "layout": "Minimalist HUD style. Focus is purely on the voice interaction.",
+      "elements": "Large animated CSS waveform in the center (Jordan's voice). Real-time transcript box below it (user's voice). Top right: Q&A progress indicator (e.g., '3 / 8'). Agent status indicators (Listening/Speaking/Thinking) clearly visible."
+    },
+    "generation": {
+      "layout": "Immersive, full-screen loading state.",
+      "elements": "Pulsating abstract wave image background, loading spinner or progress bar, and text 'Gemini is generating your episode...'."
+    },
+    "output": {
+      "layout": "Bento-style CSS Grid layout (Control Room mode) strictly utilizing max screen estate.",
+      "elements": "Cards for: Title & Hook, Full Script, Show Notes, Tags, Call-to-Action, Listener Persona, Audiogram Script, Tweet Copy. Each card has a 'Copy' button. Top section features a sticky TTS playback bar with a play button and animated waveform."
+    }
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: Do not use Shadcn, Material UI, or ANY external UI component library. Build exclusively with React and Tailwind CSS.",
+    "Use the exact CSS variables provided in the design guidelines. Map them in Tailwind config or directly in index.css as :root vars.",
+    "Ensure all buttons have the required scale(1.02) transform and glow effect on hover.",
+    "Use standard Inter or system-sans-serif, but enforce tight tracking and heavy weights for headings.",
+    "Implement the animated waveform purely using CSS keyframes and multiple vertical divs.",
+    "Implement all 5 screens exactly as specified in a logical flow (Hero -> Setup -> Conversation -> Generation -> Output).",
+    "API backend (/agent) runs on FastAPI Python. Build frontend logic accordingly."
+  ]
+}
