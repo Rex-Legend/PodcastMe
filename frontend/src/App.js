@@ -1,52 +1,75 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import React, { useState } from "react";
+import "./index.css";
+import HeroScreen from "./screens/HeroScreen";
+import VoiceSetupScreen from "./screens/VoiceSetupScreen";
+import ConversationScreen from "./screens/ConversationScreen";
+import GenerationScreen from "./screens/GenerationScreen";
+import OutputScreen from "./screens/OutputScreen";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
+const SCREENS = {
+  HERO: "HERO",
+  VOICE_SETUP: "VOICE_SETUP",
+  CONVERSATION: "CONVERSATION",
+  GENERATION: "GENERATION",
+  OUTPUT: "OUTPUT",
 };
 
 function App() {
+  const [screen, setScreen] = useState(SCREENS.HERO);
+  const [userPrefs, setUserPrefs] = useState(null);
+  const [conversationData, setConversationData] = useState(null);
+  const [episodeData, setEpisodeData] = useState(null);
+
+  const handleSetupComplete = (prefs) => {
+    setUserPrefs(prefs);
+    setScreen(SCREENS.CONVERSATION);
+  };
+
+  const handleConversationComplete = (answers) => {
+    setConversationData(answers);
+    setScreen(SCREENS.GENERATION);
+  };
+
+  const handleEpisodeGenerated = (episode) => {
+    setEpisodeData(episode);
+    setScreen(SCREENS.OUTPUT);
+  };
+
+  const handleRestart = () => {
+    setScreen(SCREENS.HERO);
+    setUserPrefs(null);
+    setConversationData(null);
+    setEpisodeData(null);
+  };
+
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+    <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: "#0A0A0A", minHeight: "100vh" }}>
+      {screen === SCREENS.HERO && (
+        <HeroScreen onStart={() => setScreen(SCREENS.VOICE_SETUP)} />
+      )}
+      {screen === SCREENS.VOICE_SETUP && (
+        <VoiceSetupScreen onNext={handleSetupComplete} onBack={() => setScreen(SCREENS.HERO)} />
+      )}
+      {screen === SCREENS.CONVERSATION && (
+        <ConversationScreen
+          userPrefs={userPrefs}
+          onComplete={handleConversationComplete}
+        />
+      )}
+      {screen === SCREENS.GENERATION && (
+        <GenerationScreen
+          userPrefs={userPrefs}
+          conversationData={conversationData}
+          onComplete={handleEpisodeGenerated}
+        />
+      )}
+      {screen === SCREENS.OUTPUT && (
+        <OutputScreen
+          episode={episodeData}
+          userPrefs={userPrefs}
+          onRestart={handleRestart}
+        />
+      )}
     </div>
   );
 }
