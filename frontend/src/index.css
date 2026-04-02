@@ -214,3 +214,67 @@ body {
 }
 
 [data-debug-wrapper="true"] { display: contents !important; }
+
+/* ─── Idle Waveform Animation ─── */
+@keyframes waveBarIdle {
+  0%, 100% { transform: scaleY(0.1); }
+  50%       { transform: scaleY(0.42); }
+}
+
+.wave-bar.idle {
+  animation: waveBarIdle 3s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+/* ─── Hero Particle System ─── */
+@keyframes particleFloat {
+  0%   { transform: translateY(0) translateX(0);    opacity: 0.3; }
+  25%  { transform: translateY(-22px) translateX(10px);  opacity: 0.6; }
+  50%  { transform: translateY(-38px) translateX(-6px);  opacity: 0.2; }
+  75%  { transform: translateY(-14px) translateX(14px);  opacity: 0.55; }
+  100% { transform: translateY(0) translateX(0);    opacity: 0.3; }
+}
+
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: particleFloat ease-in-out infinite;
+}
+
+/* ─── Hero Orb Pulse ─── */
+@keyframes orbPulse {
+  0%, 100% { transform: scale(1);    opacity: 0.55; }
+  50%       { transform: scale(1.35); opacity: 0.9; }
+}
+
+.hero-orb {
+  animation: orbPulse 7s ease-in-out infinite;
+}
+
+/* ─── Output Screen Responsive Bento Grid ─── */
+.output-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1rem;
+}
+
+.bento-col-12 { grid-column: span 12; }
+.bento-col-8  { grid-column: span 8; }
+.bento-col-5  { grid-column: span 5; }
+.bento-col-4  { grid-column: span 4; }
+.bento-col-3  { grid-column: span 3; }
+
+@media (max-width: 768px) {
+  .bento-col-12,
+  .bento-col-8,
+  .bento-col-5,
+  .bento-col-4,
+  .bento-col-3 {
+    grid-column: span 12;
+  }
+
+  .tts-bar-actions {
+    flex-wrap: wrap;
+  }
+}

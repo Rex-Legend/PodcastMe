@@ -1,11 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import axios from "axios";
-import { Room, RoomEvent, Track } from "livekit-client";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const FALLBACK_QUESTIONS = [
+const QUESTIONS = [
   "What's the main topic or focus of this specific episode you want to record?",
   "Who is your ideal listener — describe your dream audience member in one or two sentences?",
   "What's the most controversial opinion you hold in your niche that you haven't fully shared publicly?",
@@ -16,64 +11,103 @@ const FALLBACK_QUESTIONS = [
   "Give me your one-line mega takeaway — the headline insight this episode should be remembered for.",
 ];
 
-function Waveform({ isActive, color1 = "#8B5CF6", color2 = "#EC4899", bars = 18 }) {
+const DEMO_ANSWERS = [
+  {
+    question: QUESTIONS[0],
+    answer:
+      "The Future of AI Ethics — specifically how tech founders can build trustworthy AI products before regulators force them to.",
+  },
+  {
+    question: QUESTIONS[1],
+    answer:
+      "Tech founders and product managers, 28–45, building AI-powered products and quietly worried about the ethical landmines they might be stepping on.",
+  },
+  {
+    question: QUESTIONS[2],
+    answer:
+      "Most AI ethics frameworks are performative theater. Companies adopt them to avoid bad PR, not to prevent harm. Real ethical AI starts with individual engineers having the moral courage to say no — not with PR teams writing manifestos.",
+  },
+  {
+    question: QUESTIONS[3],
+    answer:
+      "I was at a major tech company when we shipped a recommendation algorithm we knew from internal testing was amplifying extremist content. The pressure to hit engagement numbers was immense. I stayed silent. That silence still haunts me — and it taught me that no ethics review board can substitute for individual moral courage.",
+  },
+  {
+    question: QUESTIONS[4],
+    answer:
+      "Building AI systems with zero mechanism for those harmed by them to seek recourse. Every AI product needs a 'human in the loop' escalation path — but 90% of teams skip it because it slows the roadmap. That's not a product decision. That's a moral failure.",
+  },
+  {
+    question: QUESTIONS[5],
+    answer:
+      "I want them to feel that ethics isn't a tax on innovation — it's the moat. The companies that build genuinely trustworthy AI will dominate the next decade, because people are starving for AI they can actually trust.",
+  },
+  {
+    question: QUESTIONS[6],
+    answer:
+      "I want to challenge Andrew Ng's view that regulation stifles AI innovation — I think the opposite is true. And I want to build on Geoffrey Hinton's warnings by going further: giving founders a concrete, practical playbook they can use today.",
+  },
+  {
+    question: QUESTIONS[7],
+    answer:
+      "The companies that profit most from AI in the long run won't be the fastest — they'll be the most trusted.",
+  },
+];
+
+function Waveform({ mode = "idle" }) {
+  const bars = 24;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "3px", height: "48px" }}>
-      {Array.from({ length: bars }).map((_, i) => (
-        <div
-          key={i}
-          className={isActive ? "wave-bar active" : "wave-bar"}
-          style={{
-            width: "3px",
-            height: "40px",
-            background: `linear-gradient(to top, ${color1}, ${color2})`,
-            animationDelay: `${i * 55}ms`,
-            opacity: isActive ? 1 : 0.25,
-            transition: "opacity 0.3s ease",
-          }}
-        />
-      ))}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "4px",
+        height: "54px",
+      }}
+    >
+      {Array.from({ length: bars }).map((_, i) => {
+        let className = "wave-bar";
+        if (mode === "active") className += " active";
+        else if (mode === "idle") className += " idle";
+        return (
+          <div
+            key={i}
+            className={className}
+            style={{
+              width: "3px",
+              height: "42px",
+              background:
+                mode === "active"
+                  ? "linear-gradient(to top, #8B5CF6, #EC4899)"
+                  : "linear-gradient(to top, rgba(139,92,246,0.35), rgba(236,72,153,0.25))",
+              borderRadius: "999px",
+              animationDelay: `${i * 60}ms`,
+              transition: "background 0.3s ease",
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
 
 export default function ConversationScreen({ userPrefs, onComplete }) {
-  const [roomState, setRoomState] = useState("connecting");
-  const [agentStatus, setAgentStatus] = useState("waiting");
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [transcript, setTranscript] = useState("");
-  const [isFallback, setIsFallback] = useState(false);
-  const [fallbackQIndex, setFallbackQIndex] = useState(0);
-  const [fallbackInput, setFallbackInput] = useState("");
-  const [fallbackAnswers, setFallbackAnswers] = useState([]);
+  const [qIndex, setQIndex] = useState(0);
+  const [answers, setAnswers] = useState([]);
+  const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
-  const [roomName, setRoomName] = useState("");
-  const roomRef = useRef(null);
-  const audioContainerRef = useRef(null);
+  const [animKey, setAnimKey] = useState(0);
   const recognitionRef = useRef(null);
-  const fallbackTimerRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  // ── Web Speech API fallback ──
-  const startSpeechRecognition = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const r = new SR();
-    r.continuous = true;
-    r.interimResults = true;
-    r.lang = "en-US";
-    r.onresult = (ev) => {
-      const text = Array.from(ev.results)
-        .map((res) => res[0].transcript)
-        .join("");
-      setFallbackInput(text);
-    };
-    r.onend = () => setIsRecording(false);
-    recognitionRef.current = r;
-    r.start();
-    setIsRecording(true);
-  }, []);
+  const showName = userPrefs?.show_name || "Your Podcast";
 
-  const stopSpeechRecognition = useCallback(() => {
+  useEffect(() => {
+    if (textareaRef.current) textareaRef.current.focus();
+  }, [qIndex]);
+
+  const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -81,271 +115,67 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
     setIsRecording(false);
   }, []);
 
-  const submitFallbackAnswer = useCallback(() => {
-    const answer = fallbackInput.trim();
-    if (!answer) return;
-    const updated = [...fallbackAnswers, { question: FALLBACK_QUESTIONS[fallbackQIndex], answer }];
-    setFallbackAnswers(updated);
-    setFallbackInput("");
-    stopSpeechRecognition();
-    if (fallbackQIndex + 1 >= FALLBACK_QUESTIONS.length) {
-      onComplete(updated);
-    } else {
-      setFallbackQIndex((i) => i + 1);
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+      return;
     }
-  }, [fallbackInput, fallbackAnswers, fallbackQIndex, onComplete, stopSpeechRecognition]);
-
-  // ── LiveKit connection ──
-  const connectToRoom = useCallback(async () => {
-    try {
-      const res = await axios.post(`${API}/livekit-token`, {
-        participant_name: userPrefs?.name || "Podcast Host",
-        user_prefs: userPrefs || {},
-      });
-      const { server_url, participant_token, room_name } = res.data;
-      setRoomName(room_name);
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      room.on(RoomEvent.Connected, () => {
-        setRoomState("connected");
-        // Cancel fallback timer — we connected
-        if (fallbackTimerRef.current) {
-          clearTimeout(fallbackTimerRef.current);
-        }
-        // Set a secondary timer to switch fallback if agent doesn't join
-        fallbackTimerRef.current = setTimeout(() => {
-          setIsFallback(true);
-          setRoomState("fallback");
-        }, 20000);
-      });
-
-      room.on(RoomEvent.Disconnected, () => setRoomState("disconnected"));
-
-      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-        if (track.kind === Track.Kind.Audio) {
-          const el = track.attach();
-          el.autoplay = true;
-          if (audioContainerRef.current) audioContainerRef.current.appendChild(el);
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const localId = room.localParticipant?.identity;
-        const agentSpeaking = speakers.some((s) => s.identity !== localId && speakers.length > 0);
-        setAgentStatus(agentSpeaking ? "speaking" : "listening");
-        if (speakers.length === 0) setAgentStatus("thinking");
-      });
-
-      room.on(RoomEvent.DataReceived, (payload) => {
-        try {
-          const data = JSON.parse(new TextDecoder().decode(payload));
-          if (data.type === "CONVERSATION_COMPLETE") {
-            // Cancel the fallback timer
-            if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-            if (roomRef.current) roomRef.current.disconnect();
-            onComplete(data.answers);
-          } else if (data.type === "TRANSCRIPT") {
-            setTranscript(data.text || "");
-            setQuestionIndex((data.count || 0));
-            // Agent answered — reset secondary fallback timer
-            if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-          }
-        } catch (e) {
-          console.error("Data parse error:", e);
-        }
-      });
-
-      await room.connect(server_url, participant_token);
-      await room.localParticipant.setMicrophoneEnabled(true);
-    } catch (err) {
-      console.error("LiveKit connection failed:", err);
-      setRoomState("error");
-      setIsFallback(true);
-    }
-  }, [userPrefs, onComplete]);
-
-  useEffect(() => {
-    // Primary fallback: if not connected after 12 seconds
-    fallbackTimerRef.current = setTimeout(() => {
-      if (roomState === "connecting") {
-        setIsFallback(true);
-        setRoomState("fallback");
-      }
-    }, 12000);
-
-    connectToRoom();
-
-    return () => {
-      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-      if (roomRef.current) roomRef.current.disconnect();
-      if (recognitionRef.current) recognitionRef.current.stop();
-    };
-  }, []); // eslint-disable-line
-
-  const name = userPrefs?.name || "Host";
-  const showName = userPrefs?.show_name || "The Podcast";
-
-  // ── Fallback UI ──
-  if (isFallback) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    return (
-      <div
-        data-testid="conversation-fallback"
-        style={{
-          minHeight: "100vh",
-          background: "#0A0A0A",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "2rem",
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: "640px" }}>
-          <div
-            style={{
-              background: "rgba(245,158,11,0.1)",
-              border: "1px solid rgba(245,158,11,0.25)",
-              borderRadius: "0.5rem",
-              padding: "10px 16px",
-              fontSize: "0.78rem",
-              color: "#F59E0B",
-              marginBottom: "2rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <span>⚡</span> Fallback mode — Jordan couldn't connect. Answering questions directly.
-          </div>
+    if (!SR) {
+      alert("Web Speech API is not supported in this browser. Please type your answer.");
+      return;
+    }
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join("");
+      setInputText(transcript);
+    };
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e.error);
+      setIsRecording(false);
+    };
+    recognition.onend = () => setIsRecording(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording, stopRecording]);
 
-          {/* Progress */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "1.5rem",
-            }}
-          >
-            <span style={{ fontSize: "0.7rem", color: "#6B7280", letterSpacing: "0.15em", textTransform: "uppercase" }}>
-              Question
-            </span>
-            <span
-              style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.05em", color: "#F9FAFB" }}
-            >
-              {fallbackQIndex + 1}
-              <span style={{ color: "#4B5563", fontSize: "1.2rem" }}> / 8</span>
-            </span>
-          </div>
+  const submitAnswer = useCallback(() => {
+    const answer = inputText.trim();
+    if (!answer) return;
+    stopRecording();
+    const newAnswers = [...answers, { question: QUESTIONS[qIndex], answer }];
+    setAnswers(newAnswers);
+    setInputText("");
+    setAnimKey((k) => k + 1);
+    if (qIndex + 1 >= QUESTIONS.length) {
+      onComplete(newAnswers);
+    } else {
+      setQIndex((i) => i + 1);
+    }
+  }, [inputText, answers, qIndex, stopRecording, onComplete]);
 
-          {/* Progress bar */}
-          <div style={{ background: "#1E1E1E", borderRadius: "999px", height: "4px", marginBottom: "2.5rem" }}>
-            <div
-              style={{
-                height: "100%",
-                borderRadius: "999px",
-                background: "linear-gradient(90deg,#8B5CF6,#EC4899)",
-                width: `${((fallbackQIndex) / 8) * 100}%`,
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
+  const runDemo = useCallback(() => {
+    stopRecording();
+    onComplete(DEMO_ANSWERS);
+  }, [stopRecording, onComplete]);
 
-          {/* Question */}
-          <div
-            className="card fade-in-up"
-            style={{ marginBottom: "1.5rem", padding: "1.5rem" }}
-          >
-            <p style={{ fontSize: "0.7rem", color: "#8B5CF6", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.75rem" }}>
-              Jordan asks
-            </p>
-            <p style={{ fontSize: "1.15rem", color: "#F9FAFB", lineHeight: 1.6, fontWeight: 500 }}>
-              {FALLBACK_QUESTIONS[fallbackQIndex]}
-            </p>
-          </div>
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        submitAnswer();
+      }
+    },
+    [submitAnswer]
+  );
 
-          {/* Recording control */}
-          <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
-            {SR && (
-              <button
-                data-testid="fallback-mic-btn"
-                onClick={isRecording ? stopSpeechRecognition : startSpeechRecognition}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "10px 18px",
-                  borderRadius: "0.5rem",
-                  border: `1px solid ${isRecording ? "#10B981" : "#2D2D2D"}`,
-                  background: isRecording ? "rgba(16,185,129,0.12)" : "#1E1E1E",
-                  color: isRecording ? "#10B981" : "#6B7280",
-                  cursor: "pointer",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  fontFamily: "inherit",
-                  transition: "all 0.3s ease",
-                }}
-              >
-                {isRecording ? "⏹ Stop" : "🎙 Record"}
-              </button>
-            )}
-          </div>
-
-          {/* Answer input */}
-          <textarea
-            data-testid="fallback-answer-input"
-            value={fallbackInput}
-            onChange={(e) => setFallbackInput(e.target.value)}
-            placeholder="Your answer will appear here — or type directly..."
-            rows={4}
-            style={{
-              width: "100%",
-              background: "#1E1E1E",
-              border: "1px solid #2D2D2D",
-              borderRadius: "0.5rem",
-              color: "#F9FAFB",
-              padding: "1rem",
-              fontSize: "0.95rem",
-              fontFamily: "inherit",
-              resize: "vertical",
-              outline: "none",
-              marginBottom: "1rem",
-              boxSizing: "border-box",
-            }}
-          />
-          <button
-            data-testid="fallback-next-btn"
-            onClick={submitFallbackAnswer}
-            disabled={!fallbackInput.trim()}
-            className="btn-primary"
-            style={{ width: "100%", padding: "0.9rem", fontSize: "0.95rem" }}
-          >
-            {fallbackQIndex + 1 < 8 ? "Next Question →" : "Generate My Episode →"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── LiveKit UI ──
-  const statusColors = {
-    waiting: "#6B7280",
-    speaking: "#8B5CF6",
-    listening: "#10B981",
-    thinking: "#F59E0B",
-  };
-  const statusLabels = {
-    waiting: "Waiting for Jordan...",
-    speaking: "Jordan is speaking",
-    listening: "Listening to you",
-    thinking: "Processing...",
-  };
+  const progressPct = (qIndex / QUESTIONS.length) * 100;
 
   return (
     <div
@@ -356,181 +186,310 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem",
         position: "relative",
       }}
     >
-      {/* Hidden audio container */}
-      <div ref={audioContainerRef} style={{ display: "none" }} />
-
-      {/* Header */}
+      {/* ── Top Bar ── */}
       <div
         style={{
-          position: "absolute",
-          top: "2rem",
-          left: 0,
-          right: 0,
+          width: "100%",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 2rem",
+          padding: "1rem 1.75rem",
+          borderBottom: "1px solid #181818",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          background: "rgba(10,10,10,0.95)",
+          backdropFilter: "blur(12px)",
         }}
       >
-        <div>
-          <span
-            style={{
-              fontSize: "0.7rem",
-              color: "#6B7280",
-              letterSpacing: "0.15em",
-              textTransform: "uppercase",
-            }}
-          >
-            {showName}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div
-            className="pulse-dot"
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: statusColors[agentStatus],
-            }}
-          />
-          <span style={{ fontSize: "0.8rem", color: statusColors[agentStatus] }}>
-            {statusLabels[agentStatus]}
-          </span>
-        </div>
-        <div
-          data-testid="question-progress"
+        <span
           style={{
-            fontSize: "0.7rem",
+            fontSize: "0.68rem",
             color: "#6B7280",
-            letterSpacing: "0.1em",
+            letterSpacing: "0.15em",
             textTransform: "uppercase",
+            fontWeight: 600,
           }}
         >
-          Q <span style={{ color: "#F9FAFB", fontWeight: 700, fontSize: "1.1rem" }}>{Math.min(questionIndex + 1, 8)}</span> / 8
+          {showName}
+        </span>
+
+        <div
+          data-testid="question-progress"
+          style={{ fontSize: "0.82rem", color: "#6B7280", fontWeight: 600 }}
+        >
+          Question{" "}
+          <span style={{ color: "#F9FAFB", fontSize: "1rem", fontWeight: 900 }}>
+            {qIndex + 1}
+          </span>{" "}
+          / {QUESTIONS.length}
         </div>
+
+        <button
+          data-testid="demo-mode-btn"
+          onClick={runDemo}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "7px 14px",
+            borderRadius: "0.5rem",
+            border: "1px solid rgba(139,92,246,0.3)",
+            background: "rgba(139,92,246,0.08)",
+            color: "#8B5CF6",
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            transition: "all 0.3s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(139,92,246,0.18)";
+            e.currentTarget.style.borderColor = "rgba(139,92,246,0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(139,92,246,0.08)";
+            e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)";
+          }}
+        >
+          📊 Run Demo
+        </button>
       </div>
 
-      {/* Main content */}
-      <div style={{ width: "100%", maxWidth: "680px", textAlign: "center" }}>
-        {/* Jordan avatar */}
-        <div style={{ marginBottom: "2rem" }}>
+      {/* ── Progress Bar ── */}
+      <div style={{ width: "100%", height: "2px", background: "#151515" }}>
+        <div
+          style={{
+            height: "100%",
+            background: "linear-gradient(90deg, #8B5CF6, #EC4899)",
+            width: `${progressPct}%`,
+            transition: "width 0.5s ease",
+            boxShadow: "0 0 10px rgba(139,92,246,0.6)",
+          }}
+        />
+      </div>
+
+      {/* ── Main ── */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          width: "100%",
+          maxWidth: "660px",
+          padding: "2rem 1.5rem 3rem",
+          gap: "1.5rem",
+        }}
+      >
+        {/* Voice mode badge */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "rgba(245,158,11,0.07)",
+            border: "1px solid rgba(245,158,11,0.2)",
+            borderRadius: "999px",
+            padding: "5px 14px",
+            fontSize: "0.7rem",
+            color: "#F59E0B",
+            fontWeight: 600,
+          }}
+        >
+          🎙️ Voice mode coming soon — using text fallback for now
+        </div>
+
+        {/* Jordan avatar + waveform */}
+        <div style={{ textAlign: "center" }}>
           <div
             style={{
-              width: 88,
-              height: 88,
+              width: 68,
+              height: 68,
               borderRadius: "50%",
               background: "linear-gradient(135deg, #8B5CF6, #EC4899)",
-              margin: "0 auto 1rem",
+              margin: "0 auto 0.6rem",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "2rem",
-              boxShadow: agentStatus === "speaking" ? "0 0 30px rgba(139,92,246,0.5)" : "none",
-              transition: "box-shadow 0.3s ease",
+              fontSize: "1.6rem",
+              fontWeight: 900,
+              color: "white",
+              boxShadow: "0 0 28px rgba(139,92,246,0.4)",
             }}
           >
             J
           </div>
           <p
             style={{
-              fontSize: "0.9rem",
+              fontSize: "0.82rem",
               fontWeight: 700,
               color: "#F9FAFB",
-              letterSpacing: "0.05em",
+              marginBottom: "2px",
+              letterSpacing: "0.03em",
             }}
           >
             Jordan
           </p>
-          <p style={{ fontSize: "0.75rem", color: "#6B7280" }}>AI Podcast Producer</p>
+          <p style={{ fontSize: "0.68rem", color: "#6B7280", marginBottom: "0.875rem" }}>
+            AI Podcast Producer
+          </p>
+          <Waveform mode={isRecording ? "active" : "idle"} />
         </div>
 
-        {/* Waveform */}
-        <div style={{ marginBottom: "2.5rem" }}>
-          <Waveform isActive={agentStatus === "speaking" || agentStatus === "listening"} bars={22} />
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ background: "#1E1E1E", borderRadius: "999px", height: "3px", marginBottom: "2rem" }}>
-          <div
+        {/* Question card */}
+        <div
+          key={`q-${animKey}`}
+          className="card fade-in-up"
+          style={{ width: "100%", padding: "1.75rem" }}
+        >
+          <p
             style={{
-              height: "100%",
-              borderRadius: "999px",
-              background: "linear-gradient(90deg,#8B5CF6,#EC4899)",
-              width: `${(questionIndex / 8) * 100}%`,
-              transition: "width 0.5s ease",
-            }}
-          />
-        </div>
-
-        {/* Transcript */}
-        {transcript && (
-          <div
-            data-testid="transcript-display"
-            className="card fade-in-up"
-            style={{
-              textAlign: "left",
-              padding: "1.25rem 1.5rem",
-              minHeight: "60px",
-              marginBottom: "1rem",
+              fontSize: "0.62rem",
+              color: "#8B5CF6",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              fontWeight: 600,
+              marginBottom: "0.875rem",
             }}
           >
-            <p style={{ fontSize: "0.7rem", color: "#8B5CF6", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.5rem" }}>
-              Your last answer
-            </p>
-            <p style={{ color: "#F9FAFB", fontSize: "0.95rem", lineHeight: 1.6 }}>{transcript}</p>
-          </div>
-        )}
-
-        {/* Connection status */}
-        {roomState === "connecting" && (
-          <div style={{ color: "#6B7280", fontSize: "0.85rem", marginTop: "1rem" }}>
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                border: "2px solid #2D2D2D",
-                borderTopColor: "#8B5CF6",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-                margin: "0 auto 0.75rem",
-              }}
-            />
-            Connecting to the studio...
-          </div>
-        )}
-
-        {roomState === "connected" && agentStatus === "waiting" && (
-          <p style={{ color: "#6B7280", fontSize: "0.85rem", marginTop: "1rem" }}>
-            Jordan is joining the room — microphone is live...
+            Jordan asks
           </p>
-        )}
+          <p
+            style={{
+              fontSize: "1.08rem",
+              color: "#F9FAFB",
+              lineHeight: 1.65,
+              fontWeight: 500,
+            }}
+          >
+            {QUESTIONS[qIndex]}
+          </p>
+        </div>
 
-        {/* Fallback switch */}
-        <button
-          data-testid="switch-to-fallback-btn"
-          onClick={() => {
-            if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-            setIsFallback(true);
-          }}
+        {/* Answer area */}
+        <div
+          style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
+          {/* Mic button */}
+          <button
+            data-testid="mic-toggle-btn"
+            onClick={toggleRecording}
+            style={{
+              display: "inline-flex",
+              alignSelf: "flex-start",
+              alignItems: "center",
+              gap: "8px",
+              padding: "9px 16px",
+              borderRadius: "0.5rem",
+              border: `1px solid ${isRecording ? "#10B981" : "#2D2D2D"}`,
+              background: isRecording ? "rgba(16,185,129,0.1)" : "#1E1E1E",
+              color: isRecording ? "#10B981" : "#6B7280",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              transition: "all 0.3s ease",
+            }}
+          >
+            {isRecording ? (
+              <>
+                <span
+                  className="pulse-dot"
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: "#10B981",
+                    display: "inline-block",
+                    flexShrink: 0,
+                  }}
+                />
+                Stop Recording
+              </>
+            ) : (
+              <>🎙 Speak Answer</>
+            )}
+          </button>
+
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            data-testid="answer-input"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isRecording
+                ? "Listening... speak your answer clearly"
+                : "Type your answer here — or use the mic above\n(Ctrl+Enter to submit)"
+            }
+            rows={4}
+            style={{
+              width: "100%",
+              background: "#1E1E1E",
+              border: `1px solid ${isRecording ? "rgba(16,185,129,0.4)" : "#2D2D2D"}`,
+              borderRadius: "0.625rem",
+              color: "#F9FAFB",
+              padding: "1rem 1.125rem",
+              fontSize: "0.95rem",
+              fontFamily: "inherit",
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+              lineHeight: 1.6,
+              transition: "border-color 0.3s ease",
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = isRecording
+                ? "rgba(16,185,129,0.5)"
+                : "rgba(139,92,246,0.5)";
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = isRecording
+                ? "rgba(16,185,129,0.4)"
+                : "#2D2D2D";
+            }}
+          />
+
+          {/* Submit */}
+          <button
+            data-testid="submit-answer-btn"
+            onClick={submitAnswer}
+            disabled={!inputText.trim()}
+            className="btn-primary"
+            style={{ width: "100%", padding: "1rem", fontSize: "0.95rem", fontWeight: 700 }}
+          >
+            {qIndex + 1 < QUESTIONS.length ? "Next Question →" : "Generate My Episode →"}
+          </button>
+        </div>
+
+        {/* Dot progress indicators */}
+        <div
           style={{
-            background: "none",
-            border: "none",
-            color: "#4B5563",
-            fontSize: "0.75rem",
-            cursor: "pointer",
-            marginTop: "2rem",
-            fontFamily: "inherit",
-            textDecoration: "underline",
+            display: "flex",
+            gap: "5px",
+            alignItems: "center",
+            paddingTop: "0.25rem",
           }}
         >
-          Having trouble? Switch to text mode
-        </button>
+          {QUESTIONS.map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: i === qIndex ? 18 : 6,
+                height: 6,
+                borderRadius: "999px",
+                background:
+                  i < qIndex ? "#10B981" : i === qIndex ? "#8B5CF6" : "#2D2D2D",
+                transition: "all 0.35s ease",
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

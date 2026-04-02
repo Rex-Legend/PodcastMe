@@ -1,4 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
+
+// ── Sub-components ──
 
 function CopyButton({ text, label = "Copy" }) {
   const [copied, setCopied] = useState(false);
@@ -16,7 +18,7 @@ function CopyButton({ text, label = "Copy" }) {
       onClick={copy}
       data-testid={`copy-btn-${label.toLowerCase().replace(/\s/g, "-")}`}
       style={{
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
         gap: "5px",
         padding: "5px 12px",
@@ -27,9 +29,10 @@ function CopyButton({ text, label = "Copy" }) {
         fontSize: "0.72rem",
         fontWeight: 600,
         cursor: "pointer",
-        letterSpacing: "0.05em",
+        letterSpacing: "0.04em",
         transition: "all 0.3s ease",
         fontFamily: "inherit",
+        flexShrink: 0,
       }}
     >
       {copied ? "✓ Copied" : `⎘ ${label}`}
@@ -37,21 +40,30 @@ function CopyButton({ text, label = "Copy" }) {
   );
 }
 
-function PlaybackWaveform({ isPlaying, bars = 20 }) {
+function Waveform({ isActive, bars = 32 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "2px", height: "28px" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "3px",
+        height: "52px",
+      }}
+    >
       {Array.from({ length: bars }).map((_, i) => (
         <div
           key={i}
-          className={isPlaying ? "wave-bar active" : "wave-bar"}
+          className={isActive ? "wave-bar active" : "wave-bar idle"}
           style={{
-            width: "2px",
-            height: "22px",
-            background: isPlaying
+            width: "3px",
+            height: "44px",
+            background: isActive
               ? `linear-gradient(to top, #8B5CF6, #EC4899)`
-              : "#2D2D2D",
-            animationDelay: `${i * 50}ms`,
-            transition: "background 0.3s ease",
+              : `linear-gradient(to top, rgba(139,92,246,0.2), rgba(236,72,153,0.15))`,
+            borderRadius: "999px",
+            animationDelay: `${i * 45}ms`,
+            transition: "background 0.4s ease",
           }}
         />
       ))}
@@ -63,14 +75,14 @@ function OutputCard({ title, children, testId }) {
   return (
     <div
       data-testid={testId}
-      className="card fade-in-up"
-      style={{ height: "100%", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+      className="card"
+      style={{ height: "100%", display: "flex", flexDirection: "column", gap: "0.875rem" }}
     >
       <p
         style={{
-          fontSize: "0.65rem",
+          fontSize: "0.62rem",
           color: "#6B7280",
-          letterSpacing: "0.18em",
+          letterSpacing: "0.2em",
           textTransform: "uppercase",
           fontWeight: 600,
         }}
@@ -82,28 +94,93 @@ function OutputCard({ title, children, testId }) {
   );
 }
 
+// ── Main Component ──
+
 export default function OutputScreen({ episode, userPrefs, onRestart }) {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [ttsState, setTtsState] = useState("idle"); // "idle" | "playing" | "paused"
+  const [ttsProgress, setTtsProgress] = useState(0);
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1);
   const utteranceRef = useRef(null);
 
-  const toggleTTS = useCallback(() => {
-    if (isPlaying) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
-      return;
+  // Parse script into sentences for real-time highlighting
+  const scriptSentences = useMemo(() => {
+    if (!episode?.script) return [];
+    const marked = episode.script.replace(/([.!?])\s+/g, "$1§");
+    return marked.split("§").filter((s) => s.trim().length > 0);
+  }, [episode]);
+
+  const sentenceOffsets = useMemo(() => {
+    if (!episode?.script || scriptSentences.length === 0) return [];
+    const offsets = [];
+    let searchFrom = 0;
+    for (const sentence of scriptSentences) {
+      const idx = episode.script.indexOf(sentence, searchFrom);
+      if (idx !== -1) {
+        offsets.push(idx);
+        searchFrom = idx + sentence.length;
+      } else {
+        offsets.push(searchFrom);
+        searchFrom += sentence.length;
+      }
     }
+    return offsets;
+  }, [episode, scriptSentences]);
+
+  const startTTS = useCallback(() => {
     if (!episode?.script) return;
-    const text = `${episode.title}. ${episode.hook} ${episode.script}`;
-    const utt = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.cancel();
+
+    const utt = new SpeechSynthesisUtterance(episode.script);
     utt.rate = 0.92;
     utt.pitch = 1;
-    utt.onstart = () => setIsPlaying(true);
-    utt.onend = () => setIsPlaying(false);
-    utt.onerror = () => setIsPlaying(false);
+
+    utt.onstart = () => setTtsState("playing");
+    utt.onend = () => {
+      setTtsState("idle");
+      setCurrentSentenceIdx(-1);
+      setTtsProgress(0);
+    };
+    utt.onerror = () => {
+      setTtsState("idle");
+      setCurrentSentenceIdx(-1);
+    };
+    utt.onboundary = (e) => {
+      if (episode?.script?.length) {
+        setTtsProgress(Math.min(99, (e.charIndex / episode.script.length) * 100));
+      }
+      const ci = e.charIndex;
+      let found = 0;
+      for (let i = sentenceOffsets.length - 1; i >= 0; i--) {
+        if (ci >= sentenceOffsets[i]) {
+          found = i;
+          break;
+        }
+      }
+      setCurrentSentenceIdx(found);
+    };
+
     utteranceRef.current = utt;
     window.speechSynthesis.speak(utt);
-    setIsPlaying(true);
-  }, [isPlaying, episode]);
+  }, [episode, sentenceOffsets]);
+
+  const handlePlayPause = useCallback(() => {
+    if (ttsState === "idle") {
+      startTTS();
+    } else if (ttsState === "playing") {
+      window.speechSynthesis.pause();
+      setTtsState("paused");
+    } else if (ttsState === "paused") {
+      window.speechSynthesis.resume();
+      setTtsState("playing");
+    }
+  }, [ttsState, startTTS]);
+
+  const stopTTS = useCallback(() => {
+    window.speechSynthesis.cancel();
+    setTtsState("idle");
+    setCurrentSentenceIdx(-1);
+    setTtsProgress(0);
+  }, []);
 
   if (!episode) {
     return (
@@ -124,36 +201,53 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
 
   const tags = Array.isArray(episode.tags) ? episode.tags : [];
   const tweets = Array.isArray(episode.tweet_copy) ? episode.tweet_copy : [];
+  const isPlaying = ttsState === "playing";
+
+  const playBtnLabel =
+    ttsState === "idle"
+      ? "▶ Listen to Your Episode"
+      : ttsState === "playing"
+      ? "⏸ Pause"
+      : "▶ Resume";
 
   return (
     <div
       data-testid="output-screen"
-      style={{ minHeight: "100vh", background: "#0A0A0A", paddingBottom: "4rem" }}
+      style={{ minHeight: "100vh", background: "#0A0A0A", paddingBottom: "5rem" }}
     >
-      {/* ── Sticky TTS Bar ── */}
+      {/* ── Sticky Minimal Bar ── */}
       <div
         data-testid="tts-playback-bar"
         style={{
           position: "sticky",
           top: 0,
           zIndex: 50,
-          background: "rgba(10,10,10,0.92)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #2D2D2D",
-          padding: "0.9rem 2rem",
+          background: "rgba(10,10,10,0.94)",
+          backdropFilter: "blur(14px)",
+          borderBottom: "1px solid #1A1A1A",
+          padding: "0.75rem 1.5rem",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "1rem",
+          gap: "0.75rem",
+          flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
           <button
             data-testid="tts-play-btn"
-            onClick={toggleTTS}
+            onClick={handlePlayPause}
             style={{
-              width: 44,
-              height: 44,
+              width: 34,
+              height: 34,
               borderRadius: "50%",
               background: isPlaying
                 ? "rgba(139,92,246,0.2)"
@@ -163,23 +257,17 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              transition: "all 0.3s ease",
               flexShrink: 0,
+              transition: "all 0.3s ease",
             }}
           >
-            {isPlaying ? (
-              <span style={{ color: "#8B5CF6", fontSize: "1rem" }}>⏸</span>
-            ) : (
-              <span style={{ color: "white", fontSize: "1.1rem" }}>▶</span>
-            )}
+            <span style={{ color: isPlaying ? "#8B5CF6" : "white", fontSize: "0.82rem" }}>
+              {ttsState === "playing" ? "⏸" : "▶"}
+            </span>
           </button>
-          <PlaybackWaveform isPlaying={isPlaying} />
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
           <p
             style={{
-              fontSize: "0.85rem",
+              fontSize: "0.82rem",
               fontWeight: 700,
               color: "#F9FAFB",
               whiteSpace: "nowrap",
@@ -189,18 +277,21 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
           >
             {episode.title}
           </p>
-          <p style={{ fontSize: "0.72rem", color: "#6B7280" }}>
-            {isPlaying ? "Playing via browser TTS..." : "Click play to listen to your script"}
-          </p>
         </div>
 
-        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <CopyButton text={`${episode.title}\n\n${episode.hook}\n\n${episode.script}`} label="Full Script" />
+        <div
+          className="tts-bar-actions"
+          style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+        >
+          <CopyButton
+            text={`${episode.title}\n\n${episode.hook}\n\n${episode.script}`}
+            label="Full Script"
+          />
           <button
             data-testid="restart-btn"
             onClick={onRestart}
             className="btn-secondary"
-            style={{ padding: "8px 16px", fontSize: "0.8rem", fontWeight: 600 }}
+            style={{ padding: "7px 14px", fontSize: "0.78rem", fontWeight: 600 }}
           >
             New Episode
           </button>
@@ -208,13 +299,14 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
       </div>
 
       {/* ── Main Content ── */}
-      <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "2.5rem 2rem" }}>
+      <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "2.5rem 1.5rem" }}>
+        {/* Episode header */}
         <div style={{ marginBottom: "2rem" }}>
           <span
             style={{
-              fontSize: "0.7rem",
+              fontSize: "0.65rem",
               color: "#8B5CF6",
-              letterSpacing: "0.2em",
+              letterSpacing: "0.22em",
               textTransform: "uppercase",
               fontWeight: 600,
             }}
@@ -224,7 +316,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
           <h1
             data-testid="episode-title"
             style={{
-              fontSize: "clamp(1.8rem, 4vw, 3rem)",
+              fontSize: "clamp(1.75rem, 4vw, 2.8rem)",
               fontWeight: 900,
               letterSpacing: "-0.04em",
               color: "#F9FAFB",
@@ -236,94 +328,201 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
           </h1>
         </div>
 
-        {/* Bento Grid */}
+        {/* ── TTS Hero Section ── */}
         <div
+          data-testid="tts-hero-section"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(12, 1fr)",
-            gap: "1rem",
+            background: "#141414",
+            border: "1px solid #2D2D2D",
+            borderRadius: "1rem",
+            padding: "2rem 2rem 1.75rem",
+            marginBottom: "2rem",
+            textAlign: "center",
           }}
         >
-          {/* Hook — spans 8 cols */}
-          <div style={{ gridColumn: "span 8" }}>
+          <p
+            style={{
+              fontSize: "0.62rem",
+              color: "#6B7280",
+              letterSpacing: "0.22em",
+              textTransform: "uppercase",
+              fontWeight: 600,
+              marginBottom: "1.25rem",
+            }}
+          >
+            Listen to Your Episode
+          </p>
+
+          <div style={{ marginBottom: "1.5rem" }}>
+            <Waveform isActive={isPlaying} bars={32} />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.875rem",
+              marginBottom: "1.5rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              data-testid="tts-hero-play-btn"
+              onClick={handlePlayPause}
+              className="btn-primary"
+              style={{ padding: "0.9rem 2.25rem", fontSize: "1rem", fontWeight: 700 }}
+            >
+              {playBtnLabel}
+            </button>
+            {ttsState !== "idle" && (
+              <button
+                data-testid="tts-stop-btn"
+                onClick={stopTTS}
+                className="btn-secondary"
+                style={{ padding: "0.9rem 1.5rem", fontSize: "0.9rem" }}
+              >
+                ⏹ Stop
+              </button>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          <div
+            style={{
+              background: "#1E1E1E",
+              borderRadius: "999px",
+              height: "4px",
+              overflow: "hidden",
+              maxWidth: "500px",
+              margin: "0 auto",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                borderRadius: "999px",
+                background: "linear-gradient(90deg, #8B5CF6, #EC4899)",
+                width: `${ttsState !== "idle" ? ttsProgress : 0}%`,
+                transition: "width 0.4s ease",
+                boxShadow: "0 0 8px rgba(139,92,246,0.5)",
+              }}
+            />
+          </div>
+          {ttsState !== "idle" && (
+            <p style={{ fontSize: "0.7rem", color: "#4B5563", marginTop: "0.6rem" }}>
+              {isPlaying ? "Playing..." : "Paused"} &middot; {Math.round(ttsProgress)}%
+              complete
+            </p>
+          )}
+        </div>
+
+        {/* ── Bento Grid ── */}
+        <div className="output-bento-grid">
+          {/* Opening Hook — 8 cols */}
+          <div className="bento-col-8">
             <OutputCard title="Opening Hook" testId="output-hook">
               <p
                 data-testid="episode-hook"
                 style={{
                   color: "#F9FAFB",
                   fontSize: "1.05rem",
-                  lineHeight: 1.7,
+                  lineHeight: 1.72,
                   fontStyle: "italic",
                   borderLeft: "3px solid #8B5CF6",
                   paddingLeft: "1rem",
+                  flex: 1,
                 }}
               >
                 {episode.hook}
               </p>
-              <div style={{ marginTop: "auto" }}>
-                <CopyButton text={episode.hook} label="Hook" />
-              </div>
+              <CopyButton text={episode.hook} label="Hook" />
             </OutputCard>
           </div>
 
-          {/* Listener Persona — spans 4 cols */}
-          <div style={{ gridColumn: "span 4" }}>
+          {/* Listener Persona — 4 cols */}
+          <div className="bento-col-4">
             <OutputCard title="Listener Persona" testId="output-persona">
-              <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.7, flex: 1 }}>
+              <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.72, flex: 1 }}>
                 {episode.listener_persona}
               </p>
               <CopyButton text={episode.listener_persona} label="Persona" />
             </OutputCard>
           </div>
 
-          {/* Full Script — spans 12 cols */}
-          <div style={{ gridColumn: "span 12" }}>
+          {/* Full Script — 12 cols with sentence highlighting */}
+          <div className="bento-col-12">
             <OutputCard title="Full Episode Script" testId="output-script">
+              <div style={{ maxHeight: "500px", overflowY: "auto", paddingRight: "0.5rem" }}>
+                {scriptSentences.length > 0 ? (
+                  <p
+                    data-testid="episode-script"
+                    style={{ fontSize: "0.92rem", lineHeight: 1.82, color: "#E5E7EB" }}
+                  >
+                    {scriptSentences.map((sentence, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          backgroundColor:
+                            i === currentSentenceIdx
+                              ? "rgba(139,92,246,0.18)"
+                              : "transparent",
+                          color: i === currentSentenceIdx ? "#F9FAFB" : "#E5E7EB",
+                          borderRadius: "4px",
+                          padding: i === currentSentenceIdx ? "1px 3px" : "0",
+                          transition: "background-color 0.25s ease, color 0.25s ease",
+                        }}
+                      >
+                        {sentence}{" "}
+                      </span>
+                    ))}
+                  </p>
+                ) : (
+                  <p
+                    data-testid="episode-script"
+                    style={{
+                      color: "#E5E7EB",
+                      fontSize: "0.92rem",
+                      lineHeight: 1.82,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {episode.script}
+                  </p>
+                )}
+              </div>
               <div
                 style={{
-                  maxHeight: "480px",
-                  overflowY: "auto",
-                  paddingRight: "0.5rem",
+                  borderTop: "1px solid #2D2D2D",
+                  paddingTop: "0.875rem",
+                  marginTop: "0.25rem",
                 }}
               >
-                <p
-                  data-testid="episode-script"
-                  style={{
-                    color: "#E5E7EB",
-                    fontSize: "0.92rem",
-                    lineHeight: 1.8,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {episode.script}
-                </p>
-              </div>
-              <div style={{ borderTop: "1px solid #2D2D2D", paddingTop: "0.75rem", marginTop: "0.25rem" }}>
                 <CopyButton text={episode.script} label="Script" />
               </div>
             </OutputCard>
           </div>
 
-          {/* Show Notes — spans 5 cols */}
-          <div style={{ gridColumn: "span 5" }}>
+          {/* Show Notes — 5 cols */}
+          <div className="bento-col-5">
             <OutputCard title="Show Notes" testId="output-show-notes">
-              <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.7, flex: 1 }}>
+              <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.72, flex: 1 }}>
                 {episode.show_notes}
               </p>
               <CopyButton text={episode.show_notes} label="Notes" />
             </OutputCard>
           </div>
 
-          {/* Audiogram — spans 4 cols */}
-          <div style={{ gridColumn: "span 4" }}>
+          {/* Audiogram — 4 cols */}
+          <div className="bento-col-4">
             <OutputCard title="Audiogram Script (30s)" testId="output-audiogram">
               <p
                 style={{
                   color: "#F9FAFB",
                   fontSize: "0.92rem",
-                  lineHeight: 1.7,
-                  flex: 1,
+                  lineHeight: 1.72,
                   fontWeight: 500,
+                  flex: 1,
                 }}
               >
                 {episode.audiogram_script}
@@ -332,14 +531,14 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
             </OutputCard>
           </div>
 
-          {/* CTA — spans 3 cols */}
-          <div style={{ gridColumn: "span 3" }}>
+          {/* CTA — 3 cols */}
+          <div className="bento-col-3">
             <OutputCard title="Call to Action" testId="output-cta">
               <p
                 style={{
                   color: "#F9FAFB",
                   fontSize: "0.92rem",
-                  lineHeight: 1.7,
+                  lineHeight: 1.72,
                   fontWeight: 600,
                   flex: 1,
                 }}
@@ -350,8 +549,8 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
             </OutputCard>
           </div>
 
-          {/* Tags — spans 4 cols */}
-          <div style={{ gridColumn: "span 4" }}>
+          {/* Tags — 4 cols */}
+          <div className="bento-col-4">
             <OutputCard title="Tags" testId="output-tags">
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", flex: 1 }}>
                 {tags.map((tag, i) => (
@@ -375,8 +574,8 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
             </OutputCard>
           </div>
 
-          {/* Tweets — spans 8 cols */}
-          <div style={{ gridColumn: "span 8" }}>
+          {/* Tweets — 8 cols */}
+          <div className="bento-col-8">
             <OutputCard title="Tweet Drafts (5 variations)" testId="output-tweets">
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", flex: 1 }}>
                 {tweets.map((tweet, i) => (

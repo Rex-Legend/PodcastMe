@@ -3,6 +3,19 @@ import React, { useEffect, useRef } from "react";
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1648237409808-aa4649c07ec8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwcG9kY2FzdCUyMG1pY3JvcGhvbmUlMjBuZW9ufGVufDB8fHx8MTc3NTE1MTUyOXww&ixlib=rb-4.1.0&q=85";
 
+const PARTICLES = [
+  { x: "12%",  y: "22%", size: 4, color: "#8B5CF6", duration: "7s",  delay: "0s" },
+  { x: "82%",  y: "18%", size: 3, color: "#EC4899", duration: "9s",  delay: "1.2s" },
+  { x: "28%",  y: "72%", size: 5, color: "#8B5CF6", duration: "6s",  delay: "2.5s" },
+  { x: "72%",  y: "68%", size: 3, color: "#EC4899", duration: "8s",  delay: "0.8s" },
+  { x: "48%",  y: "12%", size: 4, color: "#8B5CF6", duration: "10s", delay: "3.2s" },
+  { x: "88%",  y: "78%", size: 3, color: "#EC4899", duration: "7s",  delay: "1.8s" },
+  { x: "8%",   y: "58%", size: 5, color: "#8B5CF6", duration: "8s",  delay: "4.1s" },
+  { x: "62%",  y: "88%", size: 3, color: "#EC4899", duration: "6s",  delay: "2.9s" },
+  { x: "38%",  y: "42%", size: 4, color: "#8B5CF6", duration: "9s",  delay: "1.5s" },
+  { x: "77%",  y: "35%", size: 3, color: "#EC4899", duration: "7s",  delay: "3.7s" },
+];
+
 export default function HeroScreen({ onStart }) {
   const containerRef = useRef(null);
 
@@ -40,32 +53,60 @@ export default function HeroScreen({ onStart }) {
           backgroundImage: `url('${HERO_IMAGE}')`,
           backgroundSize: "cover",
           backgroundPosition: "center 30%",
-          opacity: 0.18,
+          opacity: 0.15,
         }}
       />
+
       {/* Gradient overlay */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(to bottom, #0A0A0A 0%, rgba(10,10,10,0.65) 40%, rgba(10,10,10,0.85) 70%, #0A0A0A 100%)",
+            "linear-gradient(to bottom, #0A0A0A 0%, rgba(10,10,10,0.55) 40%, rgba(10,10,10,0.85) 70%, #0A0A0A 100%)",
         }}
       />
-      {/* Purple glow orb */}
+
+      {/* Purple glow orb — pulsing via CSS class */}
       <div
+        className="hero-orb"
         style={{
           position: "absolute",
-          top: "20%",
+          top: "18%",
           left: "50%",
-          transform: "translateX(-50%)",
+          marginLeft: "-300px",
           width: "600px",
           height: "300px",
-          background: "radial-gradient(ellipse, rgba(139,92,246,0.12) 0%, transparent 70%)",
+          background:
+            "radial-gradient(ellipse, rgba(139,92,246,0.15) 0%, transparent 70%)",
           filter: "blur(40px)",
           pointerEvents: "none",
+          zIndex: 1,
         }}
       />
+
+      {/* Floating particles */}
+      <div
+        style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2 }}
+      >
+        {PARTICLES.map((p, i) => (
+          <div
+            key={i}
+            className="particle"
+            style={{
+              left: p.x,
+              top: p.y,
+              width: p.size,
+              height: p.size,
+              background: p.color,
+              boxShadow: `0 0 ${p.size * 2.5}px ${p.color}`,
+              animationDuration: p.duration,
+              animationDelay: p.delay,
+              opacity: 0.45,
+            }}
+          />
+        ))}
+      </div>
 
       {/* Content */}
       <div
@@ -85,8 +126,8 @@ export default function HeroScreen({ onStart }) {
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
-            background: "rgba(139,92,246,0.12)",
-            border: "1px solid rgba(139,92,246,0.3)",
+            background: "rgba(139,92,246,0.1)",
+            border: "1px solid rgba(139,92,246,0.25)",
             borderRadius: "999px",
             padding: "6px 16px",
             marginBottom: "2rem",
@@ -95,17 +136,12 @@ export default function HeroScreen({ onStart }) {
           }}
         >
           <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#10B981",
-            }}
+            style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981" }}
             className="pulse-dot"
           />
           <span
             style={{
-              fontSize: "0.75rem",
+              fontSize: "0.72rem",
               fontWeight: 600,
               letterSpacing: "0.15em",
               textTransform: "uppercase",
@@ -142,39 +178,32 @@ export default function HeroScreen({ onStart }) {
         <p
           className="fade-in-up"
           style={{
-            fontSize: "clamp(1rem, 2.5vw, 1.25rem)",
+            fontSize: "clamp(1rem, 2.5vw, 1.2rem)",
             color: "#6B7280",
-            maxWidth: "560px",
+            maxWidth: "540px",
             margin: "0 auto 3rem",
-            lineHeight: 1.65,
+            lineHeight: 1.7,
             animationDelay: "0.35s",
             opacity: 0,
           }}
         >
-          Have a live voice conversation with Jordan, your AI producer. Walk away with a title, full script,
-          show notes, tags, tweet copy, and more.
+          Have a live voice conversation with Jordan, your AI producer. Walk away with a title,
+          full script, show notes, tags, tweet copy, and more.
         </p>
 
         {/* CTA */}
-        <div
-          className="fade-in-up"
-          style={{ animationDelay: "0.5s", opacity: 0 }}
-        >
+        <div className="fade-in-up" style={{ animationDelay: "0.5s", opacity: 0 }}>
           <button
             data-testid="start-episode-button"
             onClick={onStart}
             className="btn-primary"
-            style={{
-              padding: "1.1rem 3rem",
-              fontSize: "1.1rem",
-              letterSpacing: "0.02em",
-            }}
+            style={{ padding: "1.1rem 3rem", fontSize: "1.1rem", letterSpacing: "0.02em" }}
           >
             Start My Episode
           </button>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div
           className="fade-in-up"
           style={{
@@ -189,7 +218,7 @@ export default function HeroScreen({ onStart }) {
           {[
             { value: "8", label: "Live Questions" },
             { value: "9", label: "Content Sections" },
-            { value: "~5 min", label: "Start to Script" },
+            { value: "~2 min", label: "Start to Script" },
           ].map((stat) => (
             <div key={stat.label} style={{ textAlign: "center" }}>
               <div
@@ -204,7 +233,7 @@ export default function HeroScreen({ onStart }) {
               </div>
               <div
                 style={{
-                  fontSize: "0.75rem",
+                  fontSize: "0.72rem",
                   color: "#6B7280",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
