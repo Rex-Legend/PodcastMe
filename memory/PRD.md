@@ -1,166 +1,116 @@
 # PodcastMe — Product Requirements Document
 
 ## Original Problem Statement
+Create a full-stack app called PodcastMe with a 5-screen flow (HERO → VOICE_SETUP → CONVERSATION → GENERATION → OUTPUT) where a user sets up podcast preferences, talks to an AI producer (Jordan), and gets a fully generated podcast episode package via Gemini.
 
-Create a full-stack app called **PodcastMe** with a 5-screen flow:
-`HERO → VOICE_SETUP → CONVERSATION → GENERATION → OUTPUT`
+**Stack:** React + Tailwind CSS frontend | Python FastAPI backend | MongoDB | Gemini GenAI | LiveKit (voice, ARM64 fallback to Web Speech API)
 
-A user sets up their podcast preferences, has a conversation with an AI producer (Jordan) to answer 8 questions, then gets a fully generated podcast episode package via Gemini.
-
-### Core Requirements
-- React + Tailwind CSS (no external UI libraries)
-- FastAPI Python backend
-- Integrations: LiveKit (real-time voice), Deepgram (STT), Gemini (generation)
-- Dark mode only: `#0A0A0A` bg, `#141414` cards, `#8B5CF6` purple, `#EC4899` pink
+**Design:** Dark mode only — #0A0A0A bg, #141414 cards, #8B5CF6 purple, #EC4899 pink
 
 ---
 
-## Tech Stack
+## Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, Tailwind CSS, Web Speech API |
-| Backend | FastAPI, Motor (MongoDB async) |
-| AI Generation | Google Gemini 2.5 Flash |
-| Voice (full deployment) | LiveKit + Deepgram Nova-3 |
-| Database | MongoDB |
-| Preview fallback | Text input + Web Speech API (ARM64 constraint) |
-
----
-
-## Screen Specifications
-
-### Screen 1: Hero
-- Animated background with microphone image (opacity 0.15)
-- Pulsing radial gradient orb (hero-orb CSS animation)
-- 10 floating particle dots (particle CSS animation)
-- Badge: "AI Podcast Studio — Powered by Jordan"
-- H1: "Turn 8 Questions Into a Publish-Ready Episode"
-- Gradient text on "Publish-Ready"
-- Stats row: 8 Questions, 9 Sections, ~2 min
-- CTA: "Start My Episode"
-
-### Screen 2: Voice Setup
-- Form: Name, Show Name, Archetype (6-option grid), Controversy Level (slider 1-10), Energy Word
-- Validation on required fields
-- "Enter the Studio →" submit button
-
-### Screen 3: Conversation
-- Immediate text mode (no LiveKit wait)
-- "Voice mode coming soon" amber badge
-- Jordan avatar (gradient circle "J") + idle waveform animation
-- Question card with "Jordan asks" label
-- Web Speech API mic button + textarea for input
-- "Run Demo" button (top-right) — auto-fills 8 AI Ethics answers
-- Progress dots (8 steps)
-- Ctrl+Enter keyboard shortcut to submit
-
-### Screen 4: Generation
-- Abstract wave background + spinner
-- 5 staggered progress stages (Reading answers → Crafting structure → Writing script → Generating notes → Finalizing)
-- Gemini 2.5 Flash API call
-- Progress bar + percentage
-- Checklist of 9 items being generated
-
-### Screen 5: Output
-- Sticky minimal nav bar: play button + title + "New Episode" button
-- **TTS Hero Section** (primary CTA): "Listen to Your Episode" + waveform visualizer + large Play/Pause button + Stop button + progress bar
-- **Sentence highlighting**: script card highlights current sentence during TTS playback
-- Bento grid (12-column, responsive to single column on mobile ≤768px):
-  - Hook (8 cols), Listener Persona (4 cols)
-  - Full Script (12 cols) — with sentence highlighting
-  - Show Notes (5 cols), Audiogram (4 cols), CTA (3 cols)
-  - Tags (4 cols), Tweet Drafts (8 cols)
-- Copy buttons on every card
-
----
-
-## Demo Mode
-
-**Trigger:** "📊 Run Demo" button on ConversationScreen (top-right)
-**Behavior:** Immediately calls `onComplete(DEMO_ANSWERS)` with 8 pre-filled answers about "The Future of AI Ethics" podcast
-**Topic:** AI ethics for tech founders, challenges Andrew Ng + Geoffrey Hinton
-**Purpose:** 90-second investor demo flow
-
----
-
-## Backend API
-
-### `POST /api/livekit-token`
-Generates LiveKit room access token. Returns `{server_url, participant_token, room_name}`.
-
-### `POST /api/generate-episode`
-**Input:** `{user_prefs, answers: [{question, answer}]}`
-**Output (9 sections):** `{title, hook, script, show_notes, tags, cta, listener_persona, audiogram_script, tweet_copy}`
-**Model:** Gemini 2.5 Flash with JSON response mode
-**Storage:** Each episode stored in MongoDB `episodes` collection
-
----
-
-## Design System
-
-```css
---bg-primary:    #0A0A0A
---bg-card:       #141414
---bg-input:      #1E1E1E
---accent-purple: #8B5CF6
---accent-pink:   #EC4899
---success:       #10B981
---warning:       #F59E0B
---text-primary:  #F9FAFB
---text-muted:    #6B7280
---border:        #2D2D2D
+```
+/app/
+├── backend/
+│   ├── agent.py            # LiveKit Agent (fallback state - ARM64 incompatible)
+│   ├── server.py           # FastAPI — all endpoints
+│   └── .env
+├── frontend/
+│   ├── src/
+│   │   ├── screens/
+│   │   │   ├── HeroScreen.jsx           # Landing + episode history
+│   │   │   ├── VoiceSetupScreen.jsx     # Show prefs form
+│   │   │   ├── ConversationScreen.jsx   # 8-question Q&A with Jordan
+│   │   │   ├── ReviewScreen.jsx         # Edit answers before generation
+│   │   │   ├── GenerationScreen.jsx     # Loading screen + Gemini call
+│   │   │   └── OutputScreen.jsx         # 9-card bento output + TTS
+│   │   ├── App.js          # 6-screen router
+│   │   └── index.css
+│   └── .env
+└── README.md
 ```
 
-Key CSS classes: `.btn-primary`, `.btn-secondary`, `.card`, `.input-field`, `.fade-in-up`, `.wave-bar.active`, `.wave-bar.idle`, `.gradient-text`, `.pulse-dot`, `.particle`, `.hero-orb`, `.output-bento-grid`, `.bento-col-{3,4,5,8,12}`
+**Screen flow:** HERO → VOICE_SETUP → CONVERSATION → REVIEW → GENERATION → OUTPUT
 
 ---
 
-## Known Constraints
+## Key API Endpoints
 
-- **LiveKit Python SDK**: Native `liblivekit_ffi.so` incompatible with ARM64 (preview env). Frontend fallback (text + Web Speech) is fully functional.
-- **agent.py**: Runs only on x86_64. Not started in preview.
-- **No user authentication** — stateless per session.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/ | Health check |
+| POST | /api/livekit-token | LiveKit JWT token |
+| POST | /api/generate-episode | Full Gemini generation (9 sections) |
+| GET | /api/episodes | Episode history (last 5, MongoDB) |
+| POST | /api/regenerate-section | Regenerate one section of an episode |
 
 ---
 
-## What Has Been Implemented (as of 2026-02-XX)
+## DB Schema (MongoDB `episodes` collection)
 
-### V1 Scaffold (Session 1)
-- All 5 screens with basic functionality
-- FastAPI backend with LiveKit token + Gemini generation
-- LiveKit + Web Speech fallback in ConversationScreen
-- Design system (CSS variables, animations)
-- MongoDB episode storage
+```json
+{
+  "id": "uuid",
+  "user_prefs": { "name", "show_name", "archetype", "energy_word", "controversy_level" },
+  "episode": { "title", "hook", "script", "show_notes", "tags", "cta", "listener_persona", "audiogram_script", "tweet_copy" },
+  "created_at": "ISO timestamp"
+}
+```
 
-### V2 P0 Upgrades (Session 2 — Current)
-- **ConversationScreen**: Complete rewrite — immediate text mode, "Voice mode coming soon" badge, Run Demo button, idle waveform, progress dots, Ctrl+Enter shortcut
-- **OutputScreen**: TTS hero section (large play button, waveform, progress bar, sentence highlighting), mobile-responsive bento grid (CSS classes + media queries)
-- **HeroScreen**: 10 floating particles, pulsing gradient orb animation
-- **index.css**: Added `waveBarIdle`, `particleFloat`, `orbPulse` animations; `.output-bento-grid` + `.bento-col-X` responsive classes
-- **DEMO_SCRIPT.md**: Investor demo guide (90-second flow)
-- **README.md**: Complete setup + API reference
+---
+
+## What's Been Implemented
+
+### Phase 1 — Core MVP (Feb 2026)
+- 5-screen flow with complete routing
+- Voice setup form (show name, archetype, energy word, controversy slider)
+- Conversation screen with 8 Jordan questions
+- Gemini 2.5-flash generation of 9 episode sections
+- Output screen with bento grid of all content
+- MongoDB persistence of episodes
+
+### Phase 2 — P0 UI Fixes (Feb 2026)
+- Text fallback for voice (LiveKit ARM64 incompatible on preview env)
+- Demo Mode button auto-fills all 8 questions  
+- OutputScreen mobile responsiveness
+- Prominent TTS playback UI with sentence highlighting
+
+### Phase 3 — 10 Fixes Upgrade (Apr 2026)
+- **Fix 1:** Question arrays unified (ConversationScreen.jsx + agent.py word-for-word match)
+- **Fix 2:** Controversy level → hard behavioral rules in Gemini system prompt (not context string)
+- **Fix 3:** Archetype → hard behavioral rules in Gemini system prompt (6 archetypes with specific writing instructions)
+- **Fix 4:** TTS preprocessor strips `[STAGE DIRECTIONS]`, converts `...` → 500ms pause, `— wait —` → 1200ms pause via sequential SpeechSynthesisUtterance objects
+- **Fix 5:** sessionStorage persists answers before API call; error state has "Try Again" (retryCount++) and "← Edit Answers" (onBack) buttons
+- **Fix 6:** 3 demo topic pills (AI Ethics / Mental Health / Future of Work) inline with Run Demo button; selected pill has purple border
+- **Fix 7:** ReviewScreen between CONVERSATION and GENERATION — localAnswers state, auto-resize textareas, edit without mutating parent until "Generate Episode →"
+- **Fix 8:** Jordan speaks each question via speechSynthesis on qIndex change; mute toggle near avatar (default unmuted)
+- **Fix 9:** POST /api/regenerate-section endpoint + ↻ Regenerate button on each OutputCard; updates in localEpisode state without affecting other cards
+- **Fix 10:** GET /api/episodes endpoint + episode history on HeroScreen; silent fail if empty
+
+---
+
+## Known Issues / Blocked
+
+- **LiveKit ARM64:** `liblivekit_ffi.so: undefined symbol: __arm_tpidr2_save` — blocked by hardware. Mitigated by Web Speech API fallback in frontend.
+- **Transient Gemini 500:** Occasional cold-start error on gemini-2.5-flash (not consistently reproducible). Self-resolves on retry.
 
 ---
 
 ## Prioritized Backlog
 
-### P0 (Done)
-- [x] Immediate text mode on ConversationScreen
-- [x] Demo Mode button with AI Ethics pre-fills
-- [x] OutputScreen mobile responsiveness
-- [x] Prominent TTS playback section
-- [x] Sentence highlighting in script
+### P1 (Next Sprint)
+- Add data-testid to VoiceSetupScreen inputs (show-name-input, energy-word-input, archetype-select)
+- Mobile viewport testing and fixes for ConversationScreen top bar overflow
 
-### P1 (Next)
-- [ ] Manual answer flow: test full 8-question manual walk-through (type each answer)
-- [ ] Mobile viewport testing (iPhone 12 portrait)
-- [ ] TTS playback: test pause/resume behavior in production Chrome
+### P2
+- Social sharing (Open Graph meta tags for episode)
+- PDF/ZIP export of full episode package
+- User accounts / saved episode library
 
-### P2 (Future)
-- [ ] LiveKit voice agent on x86_64 deployment
-- [ ] Episode history / replay from MongoDB
-- [ ] Social sharing (direct tweet from tweet drafts)
-- [ ] Download episode package as PDF/ZIP
-- [ ] User accounts + episode library
-- [ ] Spotify/podcast platform publishing integration
+### P3 / Future
+- Spotify publishing integration
+- LiveKit fix when x86 environment available
+- Episode templates / pre-set topics
+- Analytics dashboard (listen count, copy count)
