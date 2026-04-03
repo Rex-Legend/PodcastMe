@@ -231,6 +231,7 @@ export default function ReviewScreen({ conversationData, onConfirm, onBack }) {
           <button
             onClick={onBack}
             className="btn-secondary"
+            data-testid="review-back-btn-bottom"
             style={{ padding: "0.9rem 1.5rem", fontSize: "0.9rem" }}
           >
             ← Back to Questions
