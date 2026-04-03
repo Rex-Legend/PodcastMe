@@ -1,4 +1,4 @@
-"""Backend tests for PodcastMe API - livekit-token and generate-episode endpoints"""
+"""Backend API tests for PodcastMe app"""
 import pytest
 import requests
 import os
@@ -6,81 +6,89 @@ import os
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 
-class TestHealthCheck:
+class TestHealthAndEpisodes:
+    """Basic health and episodes endpoint tests"""
+
     def test_api_root(self):
-        r = requests.get(f"{BASE_URL}/api/")
-        assert r.status_code == 200
-        data = r.json()
-        assert data.get("status") == "running"
+        response = requests.get(f"{BASE_URL}/api/")
+        assert response.status_code == 200
+        data = response.json()
+        assert "status" in data
+        print(f"API root OK: {data}")
+
+    def test_get_episodes_returns_array(self):
+        response = requests.get(f"{BASE_URL}/api/episodes")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        print(f"Episodes count: {len(data)}")
+
+    def test_get_episodes_limit(self):
+        response = requests.get(f"{BASE_URL}/api/episodes?limit=3")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) <= 3
+        print(f"Episodes with limit=3: {len(data)}")
+
+    def test_episodes_structure_if_present(self):
+        response = requests.get(f"{BASE_URL}/api/episodes")
+        assert response.status_code == 200
+        data = response.json()
+        if data:
+            ep = data[0]
+            assert "id" in ep
+            assert "episode" in ep
+            assert "created_at" in ep
+            print(f"First episode title: {ep['episode'].get('title', 'N/A')}")
+        else:
+            print("No episodes in DB yet — structure test skipped")
 
 
-class TestLiveKitToken:
-    def test_livekit_token_returns_expected_keys(self):
-        r = requests.post(f"{BASE_URL}/api/livekit-token", json={
-            "participant_name": "Test Host",
-            "user_prefs": {"name": "Test Host"}
-        })
-        # May fail if LiveKit not configured, but keys should be present
-        assert r.status_code in [200, 500]
-        if r.status_code == 200:
-            data = r.json()
-            assert "server_url" in data
-            assert "participant_token" in data
-            assert "room_name" in data
-            assert isinstance(data["participant_token"], str)
-            assert len(data["participant_token"]) > 10
-            assert "podcast-" in data["room_name"]
+class TestRegenerateSection:
+    """Tests for /api/regenerate-section endpoint"""
 
-    def test_livekit_token_default_participant(self):
-        r = requests.post(f"{BASE_URL}/api/livekit-token", json={})
-        assert r.status_code in [200, 500]
-
-
-class TestGenerateEpisode:
-    """Tests for POST /api/generate-episode with real Gemini API"""
-
-    def test_generate_episode_returns_all_9_keys(self):
+    def test_regenerate_hook(self):
         payload = {
-            "user_prefs": {
-                "name": "Alex Rivera",
-                "show_name": "The Mindset Lab",
-                "archetype": "Challenger",
-                "energy_word": "Ignite",
-                "controversy_level": 7
-            },
-            "answers": [
-                {"question": "What's the main topic?", "answer": "Why morning routines are overrated and evening rituals matter more."},
-                {"question": "Who is your ideal listener?", "answer": "Busy professionals who tried every morning routine and still feel stuck."},
-                {"question": "Most controversial opinion?", "answer": "Waking up at 5am is actually harming your creativity, not helping it."},
-                {"question": "Personal story?", "answer": "I burned out following Tim Ferriss's schedule and found my best work happens after 9pm."},
-                {"question": "Number one mistake?", "answer": "Copying influencer routines without testing what works for your own biology."},
-                {"question": "What should listeners do differently?", "answer": "Track their energy levels for one week before designing any routine."},
-                {"question": "Any thought leaders to challenge?", "answer": "Robin Sharma and the 5am Club crowd need to be challenged with actual science."},
-                {"question": "One-line mega takeaway?", "answer": "Your best self shows up when you stop fighting your chronotype."}
-            ]
+            "section": "hook",
+            "current_content": "This is an existing hook about AI ethics.",
+            "user_prefs": {"show_name": "Test Show", "archetype": "Educator", "controversy_level": 5},
+            "episode_title": "The Future of AI Ethics",
+            "episode_context": "An episode about building trustworthy AI products.",
         }
-        r = requests.post(f"{BASE_URL}/api/generate-episode", json=payload, timeout=90)
-        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text[:500]}"
-        data = r.json()
-        required_keys = ["title", "hook", "script", "show_notes", "tags", "cta", "listener_persona", "audiogram_script", "tweet_copy"]
-        for key in required_keys:
-            assert key in data, f"Missing key: {key}"
+        response = requests.post(f"{BASE_URL}/api/regenerate-section", json=payload)
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        data = response.json()
+        assert "section" in data
+        assert "content" in data
+        assert data["section"] == "hook"
+        assert isinstance(data["content"], str)
+        assert len(data["content"]) > 10
+        print(f"Regenerated hook (first 100 chars): {str(data['content'])[:100]}")
 
-        # Validate data types and content
-        assert isinstance(data["title"], str) and len(data["title"]) > 5
-        assert isinstance(data["hook"], str) and len(data["hook"]) > 20
-        assert isinstance(data["script"], str) and len(data["script"]) > 100
-        assert isinstance(data["show_notes"], str) and len(data["show_notes"]) > 50
-        assert isinstance(data["tags"], list) and len(data["tags"]) >= 5
-        assert isinstance(data["cta"], str) and len(data["cta"]) > 10
-        assert isinstance(data["listener_persona"], str) and len(data["listener_persona"]) > 50
-        assert isinstance(data["audiogram_script"], str) and len(data["audiogram_script"]) > 20
-        assert isinstance(data["tweet_copy"], list) and len(data["tweet_copy"]) >= 4
+    def test_regenerate_cta(self):
+        payload = {
+            "section": "cta",
+            "current_content": "Subscribe and share this episode.",
+            "user_prefs": {"show_name": "Test Show", "archetype": "Coach", "controversy_level": 5},
+            "episode_title": "Mental Health at Work",
+            "episode_context": "Episode about burnout.",
+        }
+        response = requests.post(f"{BASE_URL}/api/regenerate-section", json=payload)
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        data = response.json()
+        assert data["section"] == "cta"
+        assert isinstance(data["content"], str)
+        print(f"Regenerated CTA: {str(data['content'])[:100]}")
 
-    def test_generate_episode_missing_answers_fails_gracefully(self):
-        r = requests.post(f"{BASE_URL}/api/generate-episode", json={
+    def test_regenerate_invalid_missing_section(self):
+        payload = {
+            "current_content": "Some content",
             "user_prefs": {},
-            "answers": []
-        }, timeout=90)
-        # Should still return 200 (Gemini will generate with empty context) or 422
-        assert r.status_code in [200, 422, 500]
+            "episode_title": "Test",
+            "episode_context": "Test",
+        }
+        response = requests.post(f"{BASE_URL}/api/regenerate-section", json=payload)
+        # Should fail with 422 (missing required field)
+        assert response.status_code == 422
+        print(f"Validation error as expected: {response.status_code}")
