@@ -11,46 +11,143 @@ const QUESTIONS = [
   "Give me your one-line mega takeaway — the headline insight this episode should be remembered for.",
 ];
 
-const DEMO_ANSWERS = [
+const DEMO_TOPICS = [
   {
-    question: QUESTIONS[0],
-    answer:
-      "The Future of AI Ethics — specifically how tech founders can build trustworthy AI products before regulators force them to.",
+    id: "ai-ethics",
+    label: "AI Ethics",
+    answers: [
+      {
+        question: QUESTIONS[0],
+        answer:
+          "The Future of AI Ethics — specifically how tech founders can build trustworthy AI products before regulators force them to.",
+      },
+      {
+        question: QUESTIONS[1],
+        answer:
+          "Tech founders and product managers, 28–45, building AI-powered products and quietly worried about the ethical landmines they might be stepping on.",
+      },
+      {
+        question: QUESTIONS[2],
+        answer:
+          "Most AI ethics frameworks are performative theater. Companies adopt them to avoid bad PR, not to prevent harm. Real ethical AI starts with individual engineers having the moral courage to say no — not with PR teams writing manifestos.",
+      },
+      {
+        question: QUESTIONS[3],
+        answer:
+          "I was at a major tech company when we shipped a recommendation algorithm we knew from internal testing was amplifying extremist content. The pressure to hit engagement numbers was immense. I stayed silent. That silence still haunts me — and it taught me that no ethics review board can substitute for individual moral courage.",
+      },
+      {
+        question: QUESTIONS[4],
+        answer:
+          "Building AI systems with zero mechanism for those harmed by them to seek recourse. Every AI product needs a 'human in the loop' escalation path — but 90% of teams skip it because it slows the roadmap. That's not a product decision. That's a moral failure.",
+      },
+      {
+        question: QUESTIONS[5],
+        answer:
+          "I want them to feel that ethics isn't a tax on innovation — it's the moat. The companies that build genuinely trustworthy AI will dominate the next decade, because people are starving for AI they can actually trust.",
+      },
+      {
+        question: QUESTIONS[6],
+        answer:
+          "I want to challenge Andrew Ng's view that regulation stifles AI innovation — I think the opposite is true. And I want to build on Geoffrey Hinton's warnings by going further: giving founders a concrete, practical playbook they can use today.",
+      },
+      {
+        question: QUESTIONS[7],
+        answer:
+          "The companies that profit most from AI in the long run won't be the fastest — they'll be the most trusted.",
+      },
+    ],
   },
   {
-    question: QUESTIONS[1],
-    answer:
-      "Tech founders and product managers, 28–45, building AI-powered products and quietly worried about the ethical landmines they might be stepping on.",
+    id: "mental-health",
+    label: "Mental Health",
+    answers: [
+      {
+        question: QUESTIONS[0],
+        answer:
+          "The silent burnout epidemic inside high-performance workplaces — why the best performers are the most at-risk, and what leaders can actually do before they lose their best people.",
+      },
+      {
+        question: QUESTIONS[1],
+        answer:
+          "High-achieving professionals aged 28–45 who pride themselves on 'always being on' and secretly fear that slowing down means falling behind.",
+      },
+      {
+        question: QUESTIONS[2],
+        answer:
+          "The wellness industry has monetized suffering and repackaged it as self-optimization. Real mental health is not about being a better worker — it's about being a full human. Most corporate 'wellbeing programs' exist to transfer responsibility from the institution to the individual.",
+      },
+      {
+        question: QUESTIONS[3],
+        answer:
+          "I had a full panic attack during a board meeting and still finished the presentation. That was the moment I realized I had completely disconnected from my body. The recovery took two years and fundamentally changed how I lead teams.",
+      },
+      {
+        question: QUESTIONS[4],
+        answer:
+          "Treating burnout as a personal failure rather than a systemic design problem. Organizations optimize people like software — constantly shipping new features, never pausing for maintenance. Recovery time needs to be structural, not a personal perk.",
+      },
+      {
+        question: QUESTIONS[5],
+        answer:
+          "I want them to feel permission. Permission to draw a line. Real sustainability is a competitive advantage, not weakness. Choosing your health is also the smartest business decision you'll ever make.",
+      },
+      {
+        question: QUESTIONS[6],
+        answer:
+          "I want to challenge the positive psychology movement — figures like Martin Seligman who inadvertently created a 'just think positively' culture that victim-blames the mentally ill. I'll build on Brené Brown's vulnerability work but push it into organizational structures.",
+      },
+      {
+        question: QUESTIONS[7],
+        answer: "You cannot optimize your way out of a broken system. Change the environment, not just the person.",
+      },
+    ],
   },
   {
-    question: QUESTIONS[2],
-    answer:
-      "Most AI ethics frameworks are performative theater. Companies adopt them to avoid bad PR, not to prevent harm. Real ethical AI starts with individual engineers having the moral courage to say no — not with PR teams writing manifestos.",
-  },
-  {
-    question: QUESTIONS[3],
-    answer:
-      "I was at a major tech company when we shipped a recommendation algorithm we knew from internal testing was amplifying extremist content. The pressure to hit engagement numbers was immense. I stayed silent. That silence still haunts me — and it taught me that no ethics review board can substitute for individual moral courage.",
-  },
-  {
-    question: QUESTIONS[4],
-    answer:
-      "Building AI systems with zero mechanism for those harmed by them to seek recourse. Every AI product needs a 'human in the loop' escalation path — but 90% of teams skip it because it slows the roadmap. That's not a product decision. That's a moral failure.",
-  },
-  {
-    question: QUESTIONS[5],
-    answer:
-      "I want them to feel that ethics isn't a tax on innovation — it's the moat. The companies that build genuinely trustworthy AI will dominate the next decade, because people are starving for AI they can actually trust.",
-  },
-  {
-    question: QUESTIONS[6],
-    answer:
-      "I want to challenge Andrew Ng's view that regulation stifles AI innovation — I think the opposite is true. And I want to build on Geoffrey Hinton's warnings by going further: giving founders a concrete, practical playbook they can use today.",
-  },
-  {
-    question: QUESTIONS[7],
-    answer:
-      "The companies that profit most from AI in the long run won't be the fastest — they'll be the most trusted.",
+    id: "future-of-work",
+    label: "Future of Work",
+    answers: [
+      {
+        question: QUESTIONS[0],
+        answer:
+          "Why remote work didn't fail — why middle management failed, and what high-performance distributed teams actually look like in 2026.",
+      },
+      {
+        question: QUESTIONS[1],
+        answer:
+          "Knowledge workers aged 25–45 navigating hybrid chaos: frustrated with theater-management, craving autonomy, trying to build careers in a world where the rules change every quarter.",
+      },
+      {
+        question: QUESTIONS[2],
+        answer:
+          "Most companies claiming to be 'remote-first' are lying. They're office-first in disguise — every key decision still happens in the room, every promotion still goes to the visible person. Remote-first means restructuring power, not just Slack-enabling your team.",
+      },
+      {
+        question: QUESTIONS[3],
+        answer:
+          "I ran a fully distributed team of 23 people across 11 countries. We shipped faster than our co-located competitors. Then I joined a 'hybrid' company. Within 90 days, I watched remote employees become second-class citizens in every meeting, despite all the right policies on paper. The difference was never the technology. It was the power structure.",
+      },
+      {
+        question: QUESTIONS[4],
+        answer:
+          "Measuring productivity by visibility — hours online, response time, who speaks first in meetings. The moment you measure outputs instead of presence, everything changes. Most leaders are afraid to do this because it forces them to define what good work actually looks like.",
+      },
+      {
+        question: QUESTIONS[5],
+        answer:
+          "I want them to feel equipped to have the conversation they've been avoiding with their manager. I want them to leave with a framework for redesigning how their team actually works — and angry enough at the status quo to do something about it.",
+      },
+      {
+        question: QUESTIONS[6],
+        answer:
+          "I want to challenge RTO mandates pushed by leaders like Jamie Dimon who use office presence as a proxy for trust. I'll build on Nicholas Bloom's Stanford research on remote productivity — but take it further into what actually makes distributed teams high-performing.",
+      },
+      {
+        question: QUESTIONS[7],
+        answer:
+          "The future of work is not remote or in-office. It is built on trust — and most companies are not yet brave enough to build it.",
+      },
+    ],
   },
 ];
 
@@ -98,6 +195,8 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
   const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [animKey, setAnimKey] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState("ai-ethics");
   const recognitionRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -106,6 +205,19 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
   useEffect(() => {
     if (textareaRef.current) textareaRef.current.focus();
   }, [qIndex]);
+
+  // Jordan reads each question aloud (Fix 8)
+  useEffect(() => {
+    if (isMuted) return;
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    synth.cancel();
+    const utt = new SpeechSynthesisUtterance(QUESTIONS[qIndex]);
+    utt.rate = 0.95;
+    utt.pitch = 1.05;
+    synth.speak(utt);
+    return () => synth.cancel();
+  }, [qIndex, isMuted]);
 
   const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
@@ -162,8 +274,9 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
 
   const runDemo = useCallback(() => {
     stopRecording();
-    onComplete(DEMO_ANSWERS);
-  }, [stopRecording, onComplete]);
+    const topic = DEMO_TOPICS.find((t) => t.id === selectedTopic) || DEMO_TOPICS[0];
+    onComplete(topic.answers);
+  }, [stopRecording, onComplete, selectedTopic]);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -228,35 +341,59 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
           / {QUESTIONS.length}
         </div>
 
-        <button
-          data-testid="demo-mode-btn"
-          onClick={runDemo}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "7px 14px",
-            borderRadius: "0.5rem",
-            border: "1px solid rgba(139,92,246,0.3)",
-            background: "rgba(139,92,246,0.08)",
-            color: "#8B5CF6",
-            fontSize: "0.75rem",
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            transition: "all 0.3s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(139,92,246,0.18)";
-            e.currentTarget.style.borderColor = "rgba(139,92,246,0.6)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(139,92,246,0.08)";
-            e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)";
-          }}
-        >
-          📊 Run Demo
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "5px", flexShrink: 0 }}>
+          {DEMO_TOPICS.map((topic) => (
+            <button
+              key={topic.id}
+              data-testid={`demo-topic-${topic.id}`}
+              onClick={() => setSelectedTopic(topic.id)}
+              style={{
+                padding: "5px 9px",
+                borderRadius: "999px",
+                border: `1px solid ${selectedTopic === topic.id ? "#8B5CF6" : "rgba(139,92,246,0.18)"}`,
+                background: selectedTopic === topic.id ? "rgba(139,92,246,0.14)" : "transparent",
+                color: selectedTopic === topic.id ? "#8B5CF6" : "#6B7280",
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 0.2s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {topic.label}
+            </button>
+          ))}
+          <button
+            data-testid="demo-mode-btn"
+            onClick={runDemo}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "7px 14px",
+              borderRadius: "0.5rem",
+              border: "1px solid rgba(139,92,246,0.3)",
+              background: "rgba(139,92,246,0.08)",
+              color: "#8B5CF6",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              transition: "all 0.3s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(139,92,246,0.18)";
+              e.currentTarget.style.borderColor = "rgba(139,92,246,0.6)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(139,92,246,0.08)";
+              e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)";
+            }}
+          >
+            Run Demo
+          </button>
+        </div>
       </div>
 
       {/* ── Progress Bar ── */}
@@ -323,17 +460,48 @@ export default function ConversationScreen({ userPrefs, onComplete }) {
           >
             J
           </div>
-          <p
+          <div
             style={{
-              fontSize: "0.82rem",
-              fontWeight: 700,
-              color: "#F9FAFB",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
               marginBottom: "2px",
-              letterSpacing: "0.03em",
             }}
           >
-            Jordan
-          </p>
+            <p
+              style={{
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                color: "#F9FAFB",
+                letterSpacing: "0.03em",
+              }}
+            >
+              Jordan
+            </p>
+            <button
+              data-testid="mute-toggle-btn"
+              onClick={() => {
+                if (!isMuted) window.speechSynthesis?.cancel();
+                setIsMuted((m) => !m);
+              }}
+              title={isMuted ? "Unmute Jordan" : "Mute Jordan"}
+              style={{
+                padding: "3px 8px",
+                borderRadius: "999px",
+                border: `1px solid ${isMuted ? "#2D2D2D" : "rgba(139,92,246,0.25)"}`,
+                background: isMuted ? "transparent" : "rgba(139,92,246,0.07)",
+                color: isMuted ? "#4B5563" : "#8B5CF6",
+                fontSize: "0.6rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 0.2s ease",
+              }}
+            >
+              {isMuted ? "🔇 Muted" : "🔊 Audio"}
+            </button>
+          </div>
           <p style={{ fontSize: "0.68rem", color: "#6B7280", marginBottom: "0.875rem" }}>
             AI Podcast Producer
           </p>

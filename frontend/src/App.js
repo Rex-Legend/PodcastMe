@@ -3,6 +3,7 @@ import "./index.css";
 import HeroScreen from "./screens/HeroScreen";
 import VoiceSetupScreen from "./screens/VoiceSetupScreen";
 import ConversationScreen from "./screens/ConversationScreen";
+import ReviewScreen from "./screens/ReviewScreen";
 import GenerationScreen from "./screens/GenerationScreen";
 import OutputScreen from "./screens/OutputScreen";
 
@@ -10,6 +11,7 @@ const SCREENS = {
   HERO: "HERO",
   VOICE_SETUP: "VOICE_SETUP",
   CONVERSATION: "CONVERSATION",
+  REVIEW: "REVIEW",
   GENERATION: "GENERATION",
   OUTPUT: "OUTPUT",
 };
@@ -27,6 +29,11 @@ function App() {
 
   const handleConversationComplete = (answers) => {
     setConversationData(answers);
+    setScreen(SCREENS.REVIEW);
+  };
+
+  const handleReviewComplete = (editedAnswers) => {
+    setConversationData(editedAnswers);
     setScreen(SCREENS.GENERATION);
   };
 
@@ -42,10 +49,16 @@ function App() {
     setEpisodeData(null);
   };
 
+  const handleLoadEpisode = (episodeRecord) => {
+    setEpisodeData(episodeRecord.episode);
+    setUserPrefs(episodeRecord.user_prefs);
+    setScreen(SCREENS.OUTPUT);
+  };
+
   return (
     <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: "#0A0A0A", minHeight: "100vh" }}>
       {screen === SCREENS.HERO && (
-        <HeroScreen onStart={() => setScreen(SCREENS.VOICE_SETUP)} />
+        <HeroScreen onStart={() => setScreen(SCREENS.VOICE_SETUP)} onLoadEpisode={handleLoadEpisode} />
       )}
       {screen === SCREENS.VOICE_SETUP && (
         <VoiceSetupScreen onNext={handleSetupComplete} onBack={() => setScreen(SCREENS.HERO)} />
@@ -56,11 +69,19 @@ function App() {
           onComplete={handleConversationComplete}
         />
       )}
+      {screen === SCREENS.REVIEW && (
+        <ReviewScreen
+          conversationData={conversationData}
+          onConfirm={handleReviewComplete}
+          onBack={() => setScreen(SCREENS.CONVERSATION)}
+        />
+      )}
       {screen === SCREENS.GENERATION && (
         <GenerationScreen
           userPrefs={userPrefs}
           conversationData={conversationData}
           onComplete={handleEpisodeGenerated}
+          onBack={() => setScreen(SCREENS.REVIEW)}
         />
       )}
       {screen === SCREENS.OUTPUT && (

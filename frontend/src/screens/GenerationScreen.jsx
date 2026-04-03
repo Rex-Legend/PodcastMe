@@ -15,13 +15,25 @@ const STAGES = [
   { label: "Finalizing your episode package...", progress: 92, delay: 11000 },
 ];
 
-export default function GenerationScreen({ userPrefs, conversationData, onComplete }) {
+export default function GenerationScreen({ userPrefs, conversationData, onComplete, onBack }) {
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("Initializing...");
   const [error, setError] = useState(null);
   const [dots, setDots] = useState(".");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    // Persist answers to sessionStorage before the API call (Fix 5)
+    try {
+      sessionStorage.setItem("podcastme_answers", JSON.stringify(conversationData || []));
+      sessionStorage.setItem("podcastme_prefs", JSON.stringify(userPrefs || {}));
+    } catch (_) {}
+
+    // Reset state for this attempt
+    setProgress(0);
+    setStage("Initializing...");
+    setError(null);
+
     // Animated dots
     const dotTimer = setInterval(() => {
       setDots((d) => (d.length >= 3 ? "." : d + "."));
@@ -58,7 +70,7 @@ export default function GenerationScreen({ userPrefs, conversationData, onComple
       clearInterval(dotTimer);
       timers.forEach(clearTimeout);
     };
-  }, []); // eslint-disable-line
+  }, [retryCount]); // eslint-disable-line
 
   const showName = userPrefs?.show_name || "Your Episode";
 
@@ -82,13 +94,24 @@ export default function GenerationScreen({ userPrefs, conversationData, onComple
             Generation Failed
           </h3>
           <p style={{ color: "#6B7280", marginBottom: "1.5rem", lineHeight: 1.6 }}>{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-primary"
-            style={{ padding: "0.9rem 2rem", fontSize: "0.9rem" }}
-          >
-            Try Again
-          </button>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="btn-primary"
+              style={{ padding: "0.9rem 2rem", fontSize: "0.9rem" }}
+            >
+              Try Again
+            </button>
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="btn-secondary"
+                style={{ padding: "0.9rem 2rem", fontSize: "0.9rem" }}
+              >
+                ← Edit Answers
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

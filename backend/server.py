@@ -11,7 +11,7 @@ import uuid
 import logging
 from pathlib import Path
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
@@ -34,11 +34,34 @@ LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-EPISODE_SYSTEM_PROMPT = """You are a world-class podcast producer and content strategist.
-Generate a complete, publish-ready podcast episode package based on the host's interview transcript.
+ARCHETYPE_RULES = {
+    "Educator": (
+        "ARCHETYPE RULE: Write as a clear, structured Educator. Use numbered frameworks, defined steps, and explicit "
+        "takeaways. Make complex ideas instantly accessible. Prioritize clarity and structure over entertainment."
+    ),
+    "Disruptor": (
+        "ARCHETYPE RULE: Write as a bold Disruptor. Challenge the status quo at every turn. Use edgy, provocative "
+        "language. Name names. Directly confront outdated thinking. Make the audience productively uncomfortable."
+    ),
+    "Storyteller": (
+        "ARCHETYPE RULE: Write as a compelling Storyteller. Weave narrative arcs throughout. Use vivid sensory "
+        "examples, emotional moments, and character-driven anecdotes. Make the audience feel something."
+    ),
+    "Thought Leader": (
+        "ARCHETYPE RULE: Write as an authoritative Thought Leader. Project vision and gravitas. Use forward-looking, "
+        "big-picture language. Position insights as movements, not just opinions."
+    ),
+    "Coach": (
+        "ARCHETYPE RULE: Write as a motivating Coach. Use energizing, action-oriented language. Focus relentlessly "
+        "on transformation and actionable next steps. Speak directly to the listener as 'you'."
+    ),
+    "Interviewer": (
+        "ARCHETYPE RULE: Write as a curious Interviewer. Frame insights as discoveries. Use a conversational, "
+        "exploratory tone. Let the host's journey and questions drive the narrative."
+    ),
+}
 
-Return ONLY valid JSON (no markdown, no triple backticks) with these exact keys:
-{
+_JSON_OUTPUT_SPEC = """{
   "title": "compelling episode title (6-10 words max, specific and intriguing)",
   "hook": "opening hook (3 punchy sentences that grab attention immediately and preview the value)",
   "script": "full episode script (1800-2500 words, conversational tone, structured with natural intro, 3 main content sections, powerful outro — write it as actual speech, not bullet points)",
@@ -49,6 +72,41 @@ Return ONLY valid JSON (no markdown, no triple backticks) with these exact keys:
   "audiogram_script": "verbatim 30-second audiogram script (compelling hook + one key insight + strong CTA, written to be spoken aloud)",
   "tweet_copy": ["tweet1 (under 280 chars)", "tweet2", "tweet3", "tweet4", "tweet5"]
 }"""
+
+
+def build_episode_system_prompt(controversy_level: int, archetype: str) -> str:
+    if controversy_level <= 3:
+        controversy_rule = (
+            "CONTROVERSY RULE: Keep all content safe and balanced. Present multiple perspectives without bias. "
+            "Avoid polarizing statements. Focus on widely accepted wisdom and positive, constructive framing."
+        )
+    elif controversy_level <= 6:
+        controversy_rule = (
+            "CONTROVERSY RULE: Include moderate opinions with some edge. Mildly challenge conventional wisdom where "
+            "relevant. Present the host's clear perspective while acknowledging other viewpoints exist."
+        )
+    else:
+        controversy_rule = (
+            "CONTROVERSY RULE: Be bold and deliberately provocative. Challenge conventional wisdom directly — and by "
+            "name. Make strong, opinionated, debate-sparking statements. Take clear sides. Name specific thought "
+            "leaders or widely-held beliefs to agree with or push back against. Edgy and contrarian is always "
+            "better than safe and neutral at this controversy level."
+        )
+
+    archetype_rule = ARCHETYPE_RULES.get(
+        archetype,
+        f"ARCHETYPE RULE: Write in the authentic style of a {archetype}. Match the tone, vocabulary, and structural approach expected of this archetype.",
+    )
+
+    return f"""You are a world-class podcast producer and content strategist.
+Generate a complete, publish-ready podcast episode package based on the host's interview transcript.
+
+{controversy_rule}
+
+{archetype_rule}
+
+Return ONLY valid JSON (no markdown, no triple backticks) with these exact keys:
+{_JSON_OUTPUT_SPEC}"""
 
 
 class LiveKitTokenRequest(BaseModel):
@@ -64,6 +122,14 @@ class EpisodeAnswer(BaseModel):
 class GenerateEpisodeRequest(BaseModel):
     user_prefs: dict = {}
     answers: List[EpisodeAnswer]
+
+
+class RegenerateSectionRequest(BaseModel):
+    section: str
+    current_content: str
+    user_prefs: dict = {}
+    episode_title: str = ""
+    episode_context: str = ""
 
 
 @api_router.get("/")
@@ -126,12 +192,16 @@ INTERVIEW TRANSCRIPT:
 Generate the full podcast episode package based on this content. Be specific to their actual answers — no generic filler."""
 
         genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        system_prompt = build_episode_system_prompt(
+            controversy_level=int(prefs.get("controversy_level", 5)),
+            archetype=str(prefs.get("archetype", "Thought Leader")),
+        )
 
         response = await genai_client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=context,
             config=types.GenerateContentConfig(
-                system_instruction=EPISODE_SYSTEM_PROMPT,
+                system_instruction=system_prompt,
                 response_mime_type="application/json",
                 max_output_tokens=65536,
             ),
@@ -157,6 +227,89 @@ Generate the full podcast episode package based on this content. Be specific to 
         raise HTTPException(status_code=500, detail="Failed to parse Gemini response as JSON")
     except Exception as e:
         logger.error(f"Episode generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/episodes")
+async def get_episodes(limit: int = 5):
+    episodes = []
+    try:
+        cursor = db.episodes.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+        async for doc in cursor:
+            episodes.append(doc)
+    except Exception as e:
+        logger.error(f"Episodes fetch error: {e}")
+    return episodes
+
+
+SECTION_DESCRIPTIONS = {
+    "hook": "opening hook: 3 punchy sentences that grab attention immediately and preview the episode value",
+    "script": "full episode script (1800-2500 words, conversational, natural intro + 3 content sections + strong outro, written as spoken speech not bullet points)",
+    "show_notes": "show notes (200-250 words, key points, estimated timestamps, 2-3 resource ideas)",
+    "listener_persona": "ideal listener profile (120-160 words: age, occupation, struggles, aspirations, why this episode resonates)",
+    "audiogram_script": "30-second audiogram script (spoken hook + key insight + clear CTA, to be read aloud)",
+    "cta": "listener call-to-action (2 sentences: specific, emotional, action-oriented)",
+    "title": "episode title (6-10 words, specific and intriguing)",
+    "tags": "8 highly specific, searchable podcast tags",
+    "tweet_copy": "5 distinct tweet variations (each under 280 characters)",
+}
+
+ARRAY_SECTIONS = {"tags", "tweet_copy"}
+
+
+@api_router.post("/regenerate-section")
+async def regenerate_section(request: RegenerateSectionRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+    try:
+        description = SECTION_DESCRIPTIONS.get(request.section, f"the '{request.section}' section")
+        is_array = request.section in ARRAY_SECTIONS
+
+        return_format = (
+            "a JSON array of strings (no wrapper object)"
+            if is_array
+            else "a plain text string only — no JSON wrapper, no markdown, no preamble or explanation"
+        )
+
+        prompt = f"""You are a world-class podcast producer. Regenerate ONLY the {description} for this episode.
+
+EPISODE: "{request.episode_title}"
+SHOW: {request.user_prefs.get('show_name', 'The Podcast')} | Archetype: {request.user_prefs.get('archetype', 'Expert')} | Controversy: {request.user_prefs.get('controversy_level', 5)}/10
+CONTEXT: {request.episode_context}
+
+CURRENT VERSION — make this significantly more compelling and specific:
+{request.current_content}
+
+Return ONLY {return_format}."""
+
+        genai_client = genai.Client(api_key=GEMINI_API_KEY)
+
+        if is_array:
+            response = await genai_client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    max_output_tokens=2048,
+                ),
+            )
+            result = json.loads(response.text)
+        else:
+            response = await genai_client.aio.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(max_output_tokens=8192),
+            )
+            result = response.text.strip()
+
+        logger.info(f"Section '{request.section}' regenerated for: {request.episode_title}")
+        return {"section": request.section, "content": result}
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error in regenerate: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse Gemini response")
+    except Exception as e:
+        logger.error(f"Regeneration error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

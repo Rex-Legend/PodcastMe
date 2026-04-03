@@ -1,7 +1,10 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import axios from "axios";
 
-// ── Sub-components ──
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
+// ── CopyButton ──
 function CopyButton({ text, label = "Copy" }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -40,6 +43,7 @@ function CopyButton({ text, label = "Copy" }) {
   );
 }
 
+// ── Waveform ──
 function Waveform({ isActive, bars = 32 }) {
   return (
     <div
@@ -71,50 +75,151 @@ function Waveform({ isActive, bars = 32 }) {
   );
 }
 
-function OutputCard({ title, children, testId }) {
+// ── RegenerateButton ──
+function RegenerateButton({ onClick, isLoading, testId }) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      disabled={isLoading}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        padding: "4px 9px",
+        borderRadius: "0.375rem",
+        border: "1px solid rgba(139,92,246,0.28)",
+        background: isLoading ? "rgba(139,92,246,0.05)" : "transparent",
+        color: isLoading ? "#4B5563" : "#8B5CF6",
+        fontSize: "0.68rem",
+        fontWeight: 600,
+        cursor: isLoading ? "not-allowed" : "pointer",
+        letterSpacing: "0.04em",
+        transition: "all 0.25s ease",
+        fontFamily: "inherit",
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+      }}
+      onMouseEnter={(e) => {
+        if (!isLoading) e.currentTarget.style.background = "rgba(139,92,246,0.1)";
+      }}
+      onMouseLeave={(e) => {
+        if (!isLoading) e.currentTarget.style.background = "transparent";
+      }}
+    >
+      {isLoading ? "Regenerating..." : "↻ Regenerate"}
+    </button>
+  );
+}
+
+// ── OutputCard ──
+function OutputCard({ title, children, testId, onRegenerate, isRegenerating }) {
   return (
     <div
       data-testid={testId}
       className="card"
       style={{ height: "100%", display: "flex", flexDirection: "column", gap: "0.875rem" }}
     >
-      <p
+      <div
         style={{
-          fontSize: "0.62rem",
-          color: "#6B7280",
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          fontWeight: 600,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.5rem",
         }}
       >
-        {title}
-      </p>
+        <p
+          style={{
+            fontSize: "0.62rem",
+            color: "#6B7280",
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
+          {title}
+        </p>
+        {onRegenerate && (
+          <RegenerateButton
+            onClick={onRegenerate}
+            isLoading={isRegenerating}
+            testId={`regen-${testId}`}
+          />
+        )}
+      </div>
       {children}
     </div>
   );
 }
 
 // ── Main Component ──
-
 export default function OutputScreen({ episode, userPrefs, onRestart }) {
+  const [localEpisode, setLocalEpisode] = useState(episode);
   const [ttsState, setTtsState] = useState("idle"); // "idle" | "playing" | "paused"
   const [ttsProgress, setTtsProgress] = useState(0);
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1);
-  const utteranceRef = useRef(null);
+  const [regeneratingSection, setRegeneratingSection] = useState(null);
 
-  // Parse script into sentences for real-time highlighting
-  const scriptSentences = useMemo(() => {
-    if (!episode?.script) return [];
-    const marked = episode.script.replace(/([.!?])\s+/g, "$1§");
-    return marked.split("§").filter((s) => s.trim().length > 0);
+  const ttsEngineRef = useRef({ active: false, timeoutId: null });
+  const sentenceOffsetsRef = useRef([]);
+
+  useEffect(() => {
+    setLocalEpisode(episode);
   }, [episode]);
 
+  // ── Script Processing (Fix 4: strip stage directions + pause markers) ──
+  const scriptSegments = useMemo(() => {
+    if (!localEpisode?.script) return [];
+
+    // Strip [SQUARE BRACKET STAGE DIRECTIONS] like [TANGENT], [CORRECTION], [NOTE], etc.
+    let raw = localEpisode.script
+      .replace(/\[[^\]]+\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const segments = [];
+
+    // Split on "— wait —" (long pause: 1200ms), then on "..." (short pause: 500ms)
+    const longParts = raw.split(/—\s*wait\s*—/gi);
+    longParts.forEach((part, longIdx) => {
+      const shortParts = part.split("...");
+      shortParts.forEach((chunk, shortIdx) => {
+        const text = chunk.trim();
+        if (text) segments.push({ type: "speech", text });
+        if (shortIdx < shortParts.length - 1) {
+          segments.push({ type: "pause", duration: 500 });
+        }
+      });
+      if (longIdx < longParts.length - 1) {
+        segments.push({ type: "pause", duration: 1200 });
+      }
+    });
+
+    return segments;
+  }, [localEpisode?.script]);
+
+  // Clean joined text for sentence-level display/highlighting
+  const cleanScript = useMemo(
+    () =>
+      scriptSegments
+        .filter((s) => s.type === "speech")
+        .map((s) => s.text)
+        .join(" "),
+    [scriptSegments]
+  );
+
+  const scriptSentences = useMemo(() => {
+    if (!cleanScript) return [];
+    const marked = cleanScript.replace(/([.!?])\s+/g, "$1§");
+    return marked.split("§").filter((s) => s.trim().length > 0);
+  }, [cleanScript]);
+
   const sentenceOffsets = useMemo(() => {
-    if (!episode?.script || scriptSentences.length === 0) return [];
+    if (!cleanScript || !scriptSentences.length) return [];
     const offsets = [];
     let searchFrom = 0;
     for (const sentence of scriptSentences) {
-      const idx = episode.script.indexOf(sentence, searchFrom);
+      const idx = cleanScript.indexOf(sentence, searchFrom);
       if (idx !== -1) {
         offsets.push(idx);
         searchFrom = idx + sentence.length;
@@ -124,49 +229,87 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
       }
     }
     return offsets;
-  }, [episode, scriptSentences]);
+  }, [cleanScript, scriptSentences]);
 
+  useEffect(() => {
+    sentenceOffsetsRef.current = sentenceOffsets;
+  }, [sentenceOffsets]);
+
+  // ── TTS Engine: sequential utterances with timed pauses (Fix 4) ──
   const startTTS = useCallback(() => {
-    if (!episode?.script) return;
+    if (!scriptSegments.length) return;
     window.speechSynthesis.cancel();
+    if (ttsEngineRef.current.timeoutId) clearTimeout(ttsEngineRef.current.timeoutId);
 
-    const utt = new SpeechSynthesisUtterance(episode.script);
-    utt.rate = 0.92;
-    utt.pitch = 1;
+    const speechSegs = scriptSegments.filter((s) => s.type === "speech");
+    const totalChars = speechSegs.reduce((sum, s) => sum + s.text.length, 0) || 1;
+    let spokenChars = 0;
+    let segIdx = 0;
 
-    utt.onstart = () => setTtsState("playing");
-    utt.onend = () => {
-      setTtsState("idle");
-      setCurrentSentenceIdx(-1);
-      setTtsProgress(0);
-    };
-    utt.onerror = () => {
-      setTtsState("idle");
-      setCurrentSentenceIdx(-1);
-    };
-    utt.onboundary = (e) => {
-      if (episode?.script?.length) {
-        setTtsProgress(Math.min(99, (e.charIndex / episode.script.length) * 100));
+    const engine = { active: true, timeoutId: null };
+    ttsEngineRef.current = engine;
+
+    function speakNext() {
+      if (!engine.active) return;
+      if (segIdx >= scriptSegments.length) {
+        setTtsState("idle");
+        setCurrentSentenceIdx(-1);
+        setTtsProgress(100);
+        return;
       }
-      const ci = e.charIndex;
-      let found = 0;
-      for (let i = sentenceOffsets.length - 1; i >= 0; i--) {
-        if (ci >= sentenceOffsets[i]) {
-          found = i;
-          break;
+
+      const seg = scriptSegments[segIdx++];
+
+      if (seg.type === "pause") {
+        engine.timeoutId = setTimeout(speakNext, seg.duration);
+        return;
+      }
+
+      const segStartChars = spokenChars;
+      const utt = new SpeechSynthesisUtterance(seg.text);
+      utt.rate = 0.92;
+      utt.pitch = 1;
+
+      utt.onboundary = (e) => {
+        const globalIdx = segStartChars + e.charIndex;
+        setTtsProgress(Math.min(99, (globalIdx / totalChars) * 100));
+        const offsets = sentenceOffsetsRef.current;
+        let found = 0;
+        for (let i = offsets.length - 1; i >= 0; i--) {
+          if (globalIdx >= offsets[i]) {
+            found = i;
+            break;
+          }
         }
-      }
-      setCurrentSentenceIdx(found);
-    };
+        setCurrentSentenceIdx(found);
+      };
 
-    utteranceRef.current = utt;
-    window.speechSynthesis.speak(utt);
-  }, [episode, sentenceOffsets]);
+      utt.onend = () => {
+        if (!engine.active) return;
+        spokenChars += seg.text.length + 1; // +1 for join space
+        speakNext();
+      };
+
+      utt.onerror = () => {
+        if (engine.active) speakNext();
+      };
+
+      window.speechSynthesis.speak(utt);
+    }
+
+    setTtsState("playing");
+    setTtsProgress(0);
+    speakNext();
+  }, [scriptSegments]);
 
   const handlePlayPause = useCallback(() => {
     if (ttsState === "idle") {
       startTTS();
     } else if (ttsState === "playing") {
+      if (ttsEngineRef.current.timeoutId) {
+        clearTimeout(ttsEngineRef.current.timeoutId);
+        ttsEngineRef.current.timeoutId = null;
+      }
       window.speechSynthesis.pause();
       setTtsState("paused");
     } else if (ttsState === "paused") {
@@ -176,13 +319,40 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
   }, [ttsState, startTTS]);
 
   const stopTTS = useCallback(() => {
+    ttsEngineRef.current.active = false;
+    if (ttsEngineRef.current.timeoutId) clearTimeout(ttsEngineRef.current.timeoutId);
     window.speechSynthesis.cancel();
     setTtsState("idle");
     setCurrentSentenceIdx(-1);
     setTtsProgress(0);
   }, []);
 
-  if (!episode) {
+  // ── Section Regeneration (Fix 9) ──
+  const handleRegenerate = useCallback(
+    async (section, currentContent) => {
+      if (regeneratingSection) return;
+      setRegeneratingSection(section);
+      try {
+        const response = await axios.post(`${API}/regenerate-section`, {
+          section,
+          current_content: Array.isArray(currentContent)
+            ? JSON.stringify(currentContent)
+            : String(currentContent),
+          user_prefs: userPrefs || {},
+          episode_title: localEpisode?.title || "",
+          episode_context: localEpisode?.hook || "",
+        });
+        setLocalEpisode((prev) => ({ ...prev, [section]: response.data.content }));
+      } catch (e) {
+        console.error("Regeneration failed:", e);
+      } finally {
+        setRegeneratingSection(null);
+      }
+    },
+    [regeneratingSection, userPrefs, localEpisode]
+  );
+
+  if (!localEpisode) {
     return (
       <div
         style={{
@@ -199,8 +369,8 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
     );
   }
 
-  const tags = Array.isArray(episode.tags) ? episode.tags : [];
-  const tweets = Array.isArray(episode.tweet_copy) ? episode.tweet_copy : [];
+  const tags = Array.isArray(localEpisode.tags) ? localEpisode.tags : [];
+  const tweets = Array.isArray(localEpisode.tweet_copy) ? localEpisode.tweet_copy : [];
   const isPlaying = ttsState === "playing";
 
   const playBtnLabel =
@@ -209,6 +379,12 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
       : ttsState === "playing"
       ? "⏸ Pause"
       : "▶ Resume";
+
+  // Helper: pass regenerate props to each card
+  const mkRegen = (section) => ({
+    onRegenerate: () => handleRegenerate(section, localEpisode[section]),
+    isRegenerating: regeneratingSection === section,
+  });
 
   return (
     <div
@@ -275,7 +451,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
               textOverflow: "ellipsis",
             }}
           >
-            {episode.title}
+            {localEpisode.title}
           </p>
         </div>
 
@@ -284,7 +460,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
           style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
         >
           <CopyButton
-            text={`${episode.title}\n\n${episode.hook}\n\n${episode.script}`}
+            text={`${localEpisode.title}\n\n${localEpisode.hook}\n\n${localEpisode.script}`}
             label="Full Script"
           />
           <button
@@ -324,7 +500,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
               lineHeight: 1.1,
             }}
           >
-            {episode.title}
+            {localEpisode.title}
           </h1>
         </div>
 
@@ -411,8 +587,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
           </div>
           {ttsState !== "idle" && (
             <p style={{ fontSize: "0.7rem", color: "#4B5563", marginTop: "0.6rem" }}>
-              {isPlaying ? "Playing..." : "Paused"} &middot; {Math.round(ttsProgress)}%
-              complete
+              {isPlaying ? "Playing..." : "Paused"} &middot; {Math.round(ttsProgress)}% complete
             </p>
           )}
         </div>
@@ -421,7 +596,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
         <div className="output-bento-grid">
           {/* Opening Hook — 8 cols */}
           <div className="bento-col-8">
-            <OutputCard title="Opening Hook" testId="output-hook">
+            <OutputCard title="Opening Hook" testId="output-hook" {...mkRegen("hook")}>
               <p
                 data-testid="episode-hook"
                 style={{
@@ -434,25 +609,25 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                   flex: 1,
                 }}
               >
-                {episode.hook}
+                {localEpisode.hook}
               </p>
-              <CopyButton text={episode.hook} label="Hook" />
+              <CopyButton text={localEpisode.hook} label="Hook" />
             </OutputCard>
           </div>
 
           {/* Listener Persona — 4 cols */}
           <div className="bento-col-4">
-            <OutputCard title="Listener Persona" testId="output-persona">
+            <OutputCard title="Listener Persona" testId="output-persona" {...mkRegen("listener_persona")}>
               <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.72, flex: 1 }}>
-                {episode.listener_persona}
+                {localEpisode.listener_persona}
               </p>
-              <CopyButton text={episode.listener_persona} label="Persona" />
+              <CopyButton text={localEpisode.listener_persona} label="Persona" />
             </OutputCard>
           </div>
 
           {/* Full Script — 12 cols with sentence highlighting */}
           <div className="bento-col-12">
-            <OutputCard title="Full Episode Script" testId="output-script">
+            <OutputCard title="Full Episode Script" testId="output-script" {...mkRegen("script")}>
               <div style={{ maxHeight: "500px", overflowY: "auto", paddingRight: "0.5rem" }}>
                 {scriptSentences.length > 0 ? (
                   <p
@@ -487,7 +662,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                       whiteSpace: "pre-wrap",
                     }}
                   >
-                    {episode.script}
+                    {localEpisode.script}
                   </p>
                 )}
               </div>
@@ -498,24 +673,24 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                   marginTop: "0.25rem",
                 }}
               >
-                <CopyButton text={episode.script} label="Script" />
+                <CopyButton text={localEpisode.script} label="Script" />
               </div>
             </OutputCard>
           </div>
 
           {/* Show Notes — 5 cols */}
           <div className="bento-col-5">
-            <OutputCard title="Show Notes" testId="output-show-notes">
+            <OutputCard title="Show Notes" testId="output-show-notes" {...mkRegen("show_notes")}>
               <p style={{ color: "#D1D5DB", fontSize: "0.88rem", lineHeight: 1.72, flex: 1 }}>
-                {episode.show_notes}
+                {localEpisode.show_notes}
               </p>
-              <CopyButton text={episode.show_notes} label="Notes" />
+              <CopyButton text={localEpisode.show_notes} label="Notes" />
             </OutputCard>
           </div>
 
           {/* Audiogram — 4 cols */}
           <div className="bento-col-4">
-            <OutputCard title="Audiogram Script (30s)" testId="output-audiogram">
+            <OutputCard title="Audiogram Script (30s)" testId="output-audiogram" {...mkRegen("audiogram_script")}>
               <p
                 style={{
                   color: "#F9FAFB",
@@ -525,15 +700,15 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                   flex: 1,
                 }}
               >
-                {episode.audiogram_script}
+                {localEpisode.audiogram_script}
               </p>
-              <CopyButton text={episode.audiogram_script} label="Audiogram" />
+              <CopyButton text={localEpisode.audiogram_script} label="Audiogram" />
             </OutputCard>
           </div>
 
           {/* CTA — 3 cols */}
           <div className="bento-col-3">
-            <OutputCard title="Call to Action" testId="output-cta">
+            <OutputCard title="Call to Action" testId="output-cta" {...mkRegen("cta")}>
               <p
                 style={{
                   color: "#F9FAFB",
@@ -543,15 +718,15 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                   flex: 1,
                 }}
               >
-                {episode.cta}
+                {localEpisode.cta}
               </p>
-              <CopyButton text={episode.cta} label="CTA" />
+              <CopyButton text={localEpisode.cta} label="CTA" />
             </OutputCard>
           </div>
 
           {/* Tags — 4 cols */}
           <div className="bento-col-4">
-            <OutputCard title="Tags" testId="output-tags">
+            <OutputCard title="Tags" testId="output-tags" {...mkRegen("tags")}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", flex: 1 }}>
                 {tags.map((tag, i) => (
                   <span
@@ -576,7 +751,7 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
 
           {/* Tweets — 8 cols */}
           <div className="bento-col-8">
-            <OutputCard title="Tweet Drafts (5 variations)" testId="output-tweets">
+            <OutputCard title="Tweet Drafts (5 variations)" testId="output-tweets" {...mkRegen("tweet_copy")}>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", flex: 1 }}>
                 {tweets.map((tweet, i) => (
                   <div

@@ -1,4 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1648237409808-aa4649c07ec8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwcG9kY2FzdCUyMG1pY3JvcGhvbmUlMjBuZW9ufGVufDB8fHx8MTc3NTE1MTUyOXww&ixlib=rb-4.1.0&q=85";
@@ -16,8 +20,9 @@ const PARTICLES = [
   { x: "77%",  y: "35%", size: 3, color: "#EC4899", duration: "7s",  delay: "3.7s" },
 ];
 
-export default function HeroScreen({ onStart }) {
+export default function HeroScreen({ onStart, onLoadEpisode }) {
   const containerRef = useRef(null);
+  const [recentEpisodes, setRecentEpisodes] = useState([]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -28,6 +33,18 @@ export default function HeroScreen({ onStart }) {
         el.style.opacity = "1";
       });
     }
+  }, []);
+
+  // Fetch recent episodes silently on mount (Fix 10)
+  useEffect(() => {
+    axios
+      .get(`${API}/episodes?limit=5`)
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setRecentEpisodes(res.data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -246,6 +263,91 @@ export default function HeroScreen({ onStart }) {
           ))}
         </div>
       </div>
+
+      {/* Recent Episodes (Fix 10) — only shown if episodes exist */}
+      {recentEpisodes.length > 0 && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 10,
+            width: "100%",
+            maxWidth: "680px",
+            padding: "0 2rem 4rem",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "0.62rem",
+              color: "#4B5563",
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              fontWeight: 600,
+              marginBottom: "0.875rem",
+              textAlign: "center",
+            }}
+          >
+            Recent Episodes
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {recentEpisodes.map((ep) => (
+              <button
+                key={ep.id}
+                data-testid={`recent-episode-${ep.id}`}
+                onClick={() => onLoadEpisode && onLoadEpisode(ep)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  padding: "0.875rem 1.25rem",
+                  background: "rgba(20,20,20,0.85)",
+                  border: "1px solid #1E1E1E",
+                  borderRadius: "0.625rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  transition: "border-color 0.2s ease, background 0.2s ease",
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)";
+                  e.currentTarget.style.background = "rgba(30,20,50,0.6)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#1E1E1E";
+                  e.currentTarget.style.background = "rgba(20,20,20,0.85)";
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    style={{
+                      color: "#F9FAFB",
+                      fontSize: "0.88rem",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {ep.episode?.title || "Untitled Episode"}
+                  </p>
+                  <p style={{ color: "#4B5563", fontSize: "0.7rem", marginTop: "2px" }}>
+                    {ep.user_prefs?.show_name || "Podcast"} &middot;{" "}
+                    {new Date(ep.created_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                <span style={{ color: "#4B5563", fontSize: "0.75rem", flexShrink: 0 }}>
+                  Load →
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
