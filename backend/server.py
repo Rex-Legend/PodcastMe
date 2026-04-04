@@ -11,7 +11,7 @@ import uuid
 import logging
 from pathlib import Path
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
@@ -228,6 +228,110 @@ Generate the full podcast episode package based on this content. Be specific to 
     except Exception as e:
         logger.error(f"Episode generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/polish-script-for-audio")
+async def polish_script_for_audio(request: Dict[str, Any]):
+    """
+    Transforms raw podcast script into audio-ready production script
+    with professional audio direction markers.
+    Returns: { polished_script: str }
+    """
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+
+    try:
+        raw_script = request.get("script", "").strip()
+        user_prefs = request.get("user_prefs", {})
+        episode_title = request.get("episode_title", "")
+
+        if not raw_script or len(raw_script) < 50:
+            raise HTTPException(status_code=400, detail="Script too short to polish")
+
+        polish_system_prompt = """You are a world-class podcast script editor and audio producer. Transform written scripts into production-ready podcast audio that sounds natural, engaging, and professional.
+
+TRANSFORMATION RULES:
+
+1. **Audio-First Writing** — Every word must sound like natural speech, not an essay. Use contractions ("I'm", "don't", "it's"). Short sentences dominate. Fragments are fine if they sound conversational.
+
+2. **Production Markers** — Insert these exactly as shown:
+   - [PAUSE 2-3 seconds] — Dramatic beats, transitions, after important points
+   - [EMPHASIS] — Before key words/phrases to highlight vocally
+   - [SLOWER] — For complex ideas needing clarity
+   - [ENERGY UP] — Building intensity or passion
+   - [BEAT] — Comedic timing, silence for effect
+   - [SFX: description] — Sound effects (sparingly)
+
+3. **Chunk for Listening** — Max 2-3 sentences per idea. Listeners lose focus with dense paragraphs. Use line breaks liberally.
+
+4. **Direct Address** — Speak TO the listener, not AT them. Use "You know what?", "Here's the thing...", "Think about this...", rhetorical questions.
+
+5. **Punchy Transitions** — Replace weak connectors:
+   ❌ "Alright, let's talk about..."
+   ❌ "In conclusion, we can see that..."
+   ✅ "But here's where it gets interesting..."
+   ✅ "And this is what everyone gets wrong..."
+   ✅ "So here's my point..."
+
+6. **Personality & Humor** — Show the host's voice. Use analogies, unexpected angles, conversational asides. Make listeners want to keep listening.
+
+7. **Rhythm & Pacing** — Vary sentence length:
+   - Short. Medium. And occasionally one that's longer to give the ear a moment to breathe and process.
+
+8. **Hook + Payoff** — Open strong (first 10 seconds must grab attention). Close with a memorable takeaway that sticks.
+
+9. **Cut Filler** — Remove:
+   - "I'm here to tell you that..."
+   - "Fundamentally speaking..."
+   - "As mentioned previously..."
+   Get. To. The. Point.
+
+10. **Maintain Structure** — Keep the original narrative arc and section breaks, but rewrite every line for audio delivery.
+
+EXAMPLE TRANSFORMATION:
+❌ ESSAY: "The fundamental mistake we, as fans, are making right now is clinging to a dangerous, passive hope that frankly, isn't helping anyone."
+✅ PODCAST: "Here's what we're doing wrong. We're sitting around hoping. [BEAT] And hope? [EMPHASIS] Hope doesn't win matches."
+
+OUTPUT REQUIREMENTS:
+- Return ONLY the polished script (no explanations, no commentary)
+- Maintain word count roughly 80-120% of original (tighten if verbose)
+- Every line must be speakable in natural human voice
+- Markers integrated naturally, not forced
+- Add [OUTRO BEAT] before final sign-off"""
+
+        polish_user_prompt = f"""Transform this raw podcast script into audio-ready production quality. The host is {user_prefs.get('name', 'the host')} from show "{user_prefs.get('show_name', 'a podcast')}". Make it sound like them talking directly to a friend.
+
+EPISODE: "{episode_title}"
+
+---
+{raw_script}
+---
+
+Return ONLY the polished script with audio markers. No preamble."""
+
+        genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        response = await genai_client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=polish_user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=polish_system_prompt,
+                max_output_tokens=8192,
+            ),
+        )
+
+        polished_script = response.text.strip()
+
+        if not polished_script:
+            raise HTTPException(status_code=500, detail="Gemini returned empty response")
+
+        logger.info(f"Script polished: {episode_title} ({len(polished_script)} chars)")
+        return {"polished_script": polished_script}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Polish script error: {e}")
+        raise HTTPException(status_code=500, detail=f"Polish failed: {str(e)}")
 
 
 @api_router.get("/episodes")

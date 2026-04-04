@@ -158,16 +158,16 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
   const [ttsState, setTtsState] = useState("idle"); // "idle" | "playing" | "paused"
   const [ttsProgress, setTtsProgress] = useState(0);
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(-1);
-  const [regeneratingSection, setRegeneratingSection] = useState(null);
+  const [isPolishingScript, setIsPolishingScript] = useState(false);
 
+  const [regeneratingSection, setRegeneratingSection] = useState(null);
   const ttsEngineRef = useRef({ active: false, timeoutId: null });
+
   const sentenceOffsetsRef = useRef([]);
 
   useEffect(() => {
     setLocalEpisode(episode);
   }, [episode]);
-
-  // ── Script Processing (Fix 4: strip stage directions + pause markers) ──
   const scriptSegments = useMemo(() => {
     if (!localEpisode?.script) return [];
 
@@ -326,6 +326,26 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
     setCurrentSentenceIdx(-1);
     setTtsProgress(0);
   }, []);
+
+  // ── Polish for Audio (new feature) ──
+  const handlePolishForAudio = useCallback(async () => {
+    if (isPolishingScript) return;
+    setIsPolishingScript(true);
+    try {
+      const response = await axios.post(`${API}/polish-script-for-audio`, {
+        script: localEpisode.script,
+        user_prefs: userPrefs || {},
+        episode_title: localEpisode.title || "",
+      });
+      if (!response.data.polished_script) throw new Error("No polished script returned");
+      setLocalEpisode((prev) => ({ ...prev, script: response.data.polished_script }));
+    } catch (error) {
+      console.error("Polish failed:", error);
+      alert(`Polish failed: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsPolishingScript(false);
+    }
+  }, [isPolishingScript, localEpisode, userPrefs]);
 
   // ── Section Regeneration (Fix 9) ──
   const handleRegenerate = useCallback(
@@ -625,14 +645,54 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
             </OutputCard>
           </div>
 
-          {/* Full Script — 12 cols with sentence highlighting */}
+          {/* Full Script — 12 cols with sentence highlighting + Polish button */}
           <div className="bento-col-12">
             <OutputCard title="Full Episode Script" testId="output-script" {...mkRegen("script")}>
-              <div style={{ maxHeight: "500px", overflowY: "auto", paddingRight: "0.5rem" }}>
+              {/* Polish for Audio button */}
+              <button
+                data-testid="polish-script-btn"
+                onClick={handlePolishForAudio}
+                disabled={isPolishingScript || regeneratingSection === "script"}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "5px 12px",
+                  borderRadius: "0.4rem",
+                  border: `1px solid ${isPolishingScript ? "#4B5563" : "rgba(236,72,153,0.28)"}`,
+                  background: isPolishingScript ? "rgba(236,72,153,0.05)" : "transparent",
+                  color: isPolishingScript ? "#4B5563" : "#EC4899",
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  cursor: isPolishingScript ? "not-allowed" : "pointer",
+                  letterSpacing: "0.04em",
+                  transition: "all 0.3s ease",
+                  fontFamily: "inherit",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isPolishingScript) {
+                    e.currentTarget.style.background = "rgba(236,72,153,0.1)";
+                    e.currentTarget.style.borderColor = "rgba(236,72,153,0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isPolishingScript) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.borderColor = "rgba(236,72,153,0.28)";
+                  }
+                }}
+                title="Transform script with audio markers: [PAUSE], [EMPHASIS], [ENERGY UP], [BEAT]"
+              >
+                {isPolishingScript ? "✨ Polishing..." : "✨ Polish for Audio"}
+              </button>
+
+              {/* Script display with sentence highlighting */}
+              <div style={{ maxHeight: "500px", overflowY: "auto", paddingRight: "0.5rem", marginTop: "0.5rem" }}>
                 {scriptSentences.length > 0 ? (
                   <p
                     data-testid="episode-script"
-                    style={{ fontSize: "0.92rem", lineHeight: 1.82, color: "#E5E7EB" }}
+                    style={{ fontSize: "0.92rem", lineHeight: 1.82, color: "#E5E7EB", whiteSpace: "pre-wrap" }}
                   >
                     {scriptSentences.map((sentence, i) => (
                       <span
@@ -666,11 +726,12 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
                   </p>
                 )}
               </div>
+
               <div
                 style={{
                   borderTop: "1px solid #2D2D2D",
                   paddingTop: "0.875rem",
-                  marginTop: "0.25rem",
+                  marginTop: "0.875rem",
                 }}
               >
                 <CopyButton text={localEpisode.script} label="Script" />
