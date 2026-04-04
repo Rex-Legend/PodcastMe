@@ -88,6 +88,7 @@ Create a full-stack app called PodcastMe with a 5-screen flow (HERO → VOICE_SE
 - **Fix 8:** Jordan speaks each question via speechSynthesis on qIndex change; mute toggle near avatar (default unmuted)
 - **Fix 9:** POST /api/regenerate-section endpoint + Regenerate button on each OutputCard; updates in localEpisode state without affecting other cards
 - **Polish for Audio:** POST /api/polish-script-for-audio + Polish for Audio button (pink) on the Script card — transforms raw script to production-ready audio script with markers ([PAUSE], [EMPHASIS], [ENERGY UP], [BEAT], [SLOWER]); user-triggered, non-destructive
+- **TTS Marker Engine:** startTTS parses production markers inline — [PAUSE X]=Xs silence, [BEAT]=800ms comedic pause, [EMPHASIS]=pitch 1.15+vol 1.0, [ENERGY UP]=pitch 1.25+vol 1.0, [SLOWER]=rate 0.75; backward-compatible with old "..." and "— wait —" style pauses; shows "✨ Playing with production markers" indicator during polished playback
 - **Fix 10:** GET /api/episodes endpoint + episode history on HeroScreen; silent fail if empty
 
 ---

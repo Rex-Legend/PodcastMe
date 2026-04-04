@@ -168,45 +168,18 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
   useEffect(() => {
     setLocalEpisode(episode);
   }, [episode]);
-  const scriptSegments = useMemo(() => {
-    if (!localEpisode?.script) return [];
-
-    // Strip [SQUARE BRACKET STAGE DIRECTIONS] like [TANGENT], [CORRECTION], [NOTE], etc.
-    let raw = localEpisode.script
-      .replace(/\[[^\]]+\]/g, " ")
-      .replace(/\s+/g, " ")
+  // ── Script Processing: clean display text (all markers stripped) ──
+  // The original localEpisode.script (with markers) is used by the TTS engine internally.
+  // cleanScript is for display, sentence highlighting, and progress tracking only.
+  const cleanScript = useMemo(() => {
+    if (!localEpisode?.script) return "";
+    return localEpisode.script
+      .replace(/\[([A-Z\s]+(?:\s\d+)?)\]/g, "") // Remove [PRODUCTION MARKERS]
+      .replace(/—\s*wait\s*—/gi, "")              // Remove — wait — pauses
+      .replace(/\.\.\./g, "")                      // Remove ellipsis pauses
+      .replace(/[ \t]+/g, " ")                    // Normalize horizontal whitespace (preserve \n)
       .trim();
-
-    const segments = [];
-
-    // Split on "— wait —" (long pause: 1200ms), then on "..." (short pause: 500ms)
-    const longParts = raw.split(/—\s*wait\s*—/gi);
-    longParts.forEach((part, longIdx) => {
-      const shortParts = part.split("...");
-      shortParts.forEach((chunk, shortIdx) => {
-        const text = chunk.trim();
-        if (text) segments.push({ type: "speech", text });
-        if (shortIdx < shortParts.length - 1) {
-          segments.push({ type: "pause", duration: 500 });
-        }
-      });
-      if (longIdx < longParts.length - 1) {
-        segments.push({ type: "pause", duration: 1200 });
-      }
-    });
-
-    return segments;
   }, [localEpisode?.script]);
-
-  // Clean joined text for sentence-level display/highlighting
-  const cleanScript = useMemo(
-    () =>
-      scriptSegments
-        .filter((s) => s.type === "speech")
-        .map((s) => s.text)
-        .join(" "),
-    [scriptSegments]
-  );
 
   const scriptSentences = useMemo(() => {
     if (!cleanScript) return [];
@@ -235,14 +208,83 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
     sentenceOffsetsRef.current = sentenceOffsets;
   }, [sentenceOffsets]);
 
-  // ── TTS Engine: sequential utterances with timed pauses (Fix 4) ──
+  // ── TTS Engine with full Marker Support ──
   const startTTS = useCallback(() => {
-    if (!scriptSegments.length) return;
+    const rawScript = localEpisode?.script;
+    if (!rawScript) return;
     window.speechSynthesis.cancel();
     if (ttsEngineRef.current.timeoutId) clearTimeout(ttsEngineRef.current.timeoutId);
 
-    const speechSegs = scriptSegments.filter((s) => s.type === "speech");
-    const totalChars = speechSegs.reduce((sum, s) => sum + s.text.length, 0) || 1;
+    // ── Helper: Parse production markers + old-style pauses into segments ──
+    const parseMarkersFromScript = (script) => {
+      const segments = [];
+      const markerRegex = /\[([A-Z][A-Z\s]*(?:\s\d+)?)\]/g;
+      let lastIndex = 0;
+      let pendingEmphasis = false;
+      let pendingEnergy = null;
+      let pendingSlower = false;
+
+      // Helper to push text chunks (handles "..." and "— wait —" inside text)
+      const pushTextChunk = (raw, emphasis, energy, slower) => {
+        const longParts = raw.split(/—\s*wait\s*—/gi);
+        longParts.forEach((part, li) => {
+          const shortParts = part.split("...");
+          shortParts.forEach((chunk, si) => {
+            const t = chunk.trim();
+            if (t) segments.push({ type: "speech", text: t, emphasis, energy, slower });
+            if (si < shortParts.length - 1) segments.push({ type: "pause", duration: 500 });
+          });
+          if (li < longParts.length - 1) segments.push({ type: "pause", duration: 1200 });
+        });
+      };
+
+      let match;
+      while ((match = markerRegex.exec(script)) !== null) {
+        // Text before this marker
+        if (match.index > lastIndex) {
+          const text = script.slice(lastIndex, match.index);
+          if (text.trim()) {
+            pushTextChunk(text, pendingEmphasis, pendingEnergy, pendingSlower);
+            pendingEmphasis = false;
+            pendingEnergy = null;
+            pendingSlower = false;
+          }
+        }
+
+        const markerContent = match[1].trim();
+
+        if (markerContent.startsWith("PAUSE")) {
+          const seconds = markerContent.match(/PAUSE\s+(\d+)/);
+          segments.push({ type: "pause", duration: seconds ? parseInt(seconds[1]) * 1000 : 2000 });
+        } else if (markerContent === "BEAT") {
+          segments.push({ type: "pause", duration: 800 }); // comedic beat
+        } else if (markerContent === "EMPHASIS") {
+          pendingEmphasis = true;
+        } else if (markerContent === "ENERGY UP") {
+          pendingEnergy = "high";
+        } else if (markerContent === "SLOWER") {
+          pendingSlower = true;
+        } else if (markerContent === "OUTRO BEAT") {
+          segments.push({ type: "pause", duration: 1000 });
+        }
+        // Unrecognized markers are silently skipped
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      // Remaining text after last marker
+      if (lastIndex < script.length) {
+        const tail = script.slice(lastIndex);
+        if (tail.trim()) pushTextChunk(tail, pendingEmphasis, pendingEnergy, pendingSlower);
+      }
+
+      return segments;
+    };
+
+    const parsedSegments = parseMarkersFromScript(rawScript);
+    const speechSegs = parsedSegments.filter((s) => s.type === "speech");
+    const totalChars = speechSegs.reduce((sum, s) => sum + (s.text || "").length, 0) || 1;
+
     let spokenChars = 0;
     let segIdx = 0;
 
@@ -251,35 +293,51 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
 
     function speakNext() {
       if (!engine.active) return;
-      if (segIdx >= scriptSegments.length) {
+
+      if (segIdx >= parsedSegments.length) {
         setTtsState("idle");
         setCurrentSentenceIdx(-1);
         setTtsProgress(100);
+        console.log("TTS playback complete");
         return;
       }
 
-      const seg = scriptSegments[segIdx++];
+      const seg = parsedSegments[segIdx++];
 
+      // Real silence for pause markers
       if (seg.type === "pause") {
+        console.log(`Pausing ${seg.duration}ms`);
         engine.timeoutId = setTimeout(speakNext, seg.duration);
         return;
       }
 
+      if (seg.type !== "speech" || !seg.text) { speakNext(); return; }
+
       const segStartChars = spokenChars;
       const utt = new SpeechSynthesisUtterance(seg.text);
-      utt.rate = 0.92;
-      utt.pitch = 1;
 
+      // ── Voice modulation based on markers ──
+      if (seg.slower) {
+        utt.rate = 0.75; utt.pitch = 1.0; utt.volume = 0.85;
+        console.log(`[SLOWER] "${seg.text.substring(0, 40)}"`);
+      } else if (seg.energy === "high") {
+        utt.rate = 0.92; utt.pitch = 1.25; utt.volume = 1.0;
+        console.log(`[ENERGY UP] "${seg.text.substring(0, 40)}"`);
+      } else if (seg.emphasis) {
+        utt.rate = 0.92; utt.pitch = 1.15; utt.volume = 1.0;
+        console.log(`[EMPHASIS] "${seg.text.substring(0, 40)}"`);
+      } else {
+        utt.rate = 0.92; utt.pitch = 1.0; utt.volume = 0.85;
+      }
+
+      // Sentence boundary tracking for progress + highlighting
       utt.onboundary = (e) => {
         const globalIdx = segStartChars + e.charIndex;
         setTtsProgress(Math.min(99, (globalIdx / totalChars) * 100));
         const offsets = sentenceOffsetsRef.current;
         let found = 0;
         for (let i = offsets.length - 1; i >= 0; i--) {
-          if (globalIdx >= offsets[i]) {
-            found = i;
-            break;
-          }
+          if (globalIdx >= offsets[i]) { found = i; break; }
         }
         setCurrentSentenceIdx(found);
       };
@@ -290,7 +348,8 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
         speakNext();
       };
 
-      utt.onerror = () => {
+      utt.onerror = (e) => {
+        console.warn(`Speech error: ${e.error} — continuing`);
         if (engine.active) speakNext();
       };
 
@@ -299,8 +358,10 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
 
     setTtsState("playing");
     setTtsProgress(0);
+    setCurrentSentenceIdx(-1);
+    console.log(`Starting TTS: ${parsedSegments.length} segments (${speechSegs.length} speech, ${parsedSegments.length - speechSegs.length} pauses/markers)`);
     speakNext();
-  }, [scriptSegments]);
+  }, [localEpisode?.script, sentenceOffsets]);
 
   const handlePlayPause = useCallback(() => {
     if (ttsState === "idle") {
@@ -551,6 +612,19 @@ export default function OutputScreen({ episode, userPrefs, onRestart }) {
 
           <div style={{ marginBottom: "1.5rem" }}>
             <Waveform isActive={isPlaying} bars={32} />
+            {isPlaying && localEpisode?.script?.match(/\[(PAUSE|EMPHASIS|ENERGY UP|SLOWER|BEAT)/) && (
+              <p
+                style={{
+                  fontSize: "0.68rem",
+                  color: "#8B5CF6",
+                  marginTop: "0.625rem",
+                  textAlign: "center",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                ✨ Playing with production markers
+              </p>
+            )}
           </div>
 
           <div
