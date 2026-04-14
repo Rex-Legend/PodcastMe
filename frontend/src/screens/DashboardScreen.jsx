@@ -208,7 +208,7 @@ export default function DashboardScreen({ userId, onBack, onLoadEpisode }) {
               {stats.map((stat) => (
                 <div
                   key={stat.label}
-                  data-testid={`stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}
+                  data-testid={`stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
                   className="card"
                   style={{ padding: "1.5rem" }}
                 >

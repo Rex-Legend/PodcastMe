@@ -36,6 +36,25 @@ LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
 
+
+async def gemini_with_retry(genai_client, model: str, contents, config, max_retries: int = 2):
+    """Call Gemini with simple exponential backoff on 503 errors."""
+    import asyncio
+    last_err = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await genai_client.aio.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+        except Exception as e:
+            last_err = e
+            if "503" in str(e) and attempt < max_retries:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                logger.warning(f"Gemini 503, retry {attempt + 1}/{max_retries}")
+                continue
+            raise
+    raise last_err
+
 ARCHETYPE_RULES = {
     "Educator": (
         "ARCHETYPE RULE: Write as a clear, structured Educator. Use numbered frameworks, defined steps, and explicit "
@@ -579,13 +598,9 @@ Rules:
 Return ONLY a JSON array of exactly 8 strings. No wrapper object.
 Example: ["Question 1?", "Question 2?", ...]"""
         genai_client = genai.Client(api_key=GEMINI_API_KEY)
-        response = await genai_client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                max_output_tokens=2048,
-            ),
+        response = await gemini_with_retry(
+            genai_client, "gemini-2.5-flash", prompt,
+            types.GenerateContentConfig(response_mime_type="application/json", max_output_tokens=2048),
         )
         questions = json.loads(response.text)
         if not isinstance(questions, list) or len(questions) < 8:
@@ -616,10 +631,9 @@ Rules:
 - Reference something specific from their answer
 - Return ONLY the follow-up question string, nothing else"""
         genai_client = genai.Client(api_key=GEMINI_API_KEY)
-        response = await genai_client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(max_output_tokens=256),
+        response = await gemini_with_retry(
+            genai_client, "gemini-2.5-flash", prompt,
+            types.GenerateContentConfig(max_output_tokens=256),
         )
         followup = response.text.strip().strip('"').strip("'")
         return {"followup": followup}
@@ -647,10 +661,9 @@ Rules:
 - Be {tone}
 - Return ONLY the counterpoint text"""
         genai_client = genai.Client(api_key=GEMINI_API_KEY)
-        response = await genai_client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(max_output_tokens=512),
+        response = await gemini_with_retry(
+            genai_client, "gemini-2.5-flash", prompt,
+            types.GenerateContentConfig(max_output_tokens=512),
         )
         return {"counterpoint": response.text.strip()}
     except Exception as e:
@@ -681,13 +694,9 @@ emotion: one word from: Curious, Confrontational, Educational, Emotional, Inspir
 label: 2-3 word arc label
 Return ONLY the JSON array."""
         genai_client = genai.Client(api_key=GEMINI_API_KEY)
-        response = await genai_client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                max_output_tokens=1024,
-            ),
+        response = await gemini_with_retry(
+            genai_client, "gemini-2.5-flash", prompt,
+            types.GenerateContentConfig(response_mime_type="application/json", max_output_tokens=1024),
         )
         arc_data = json.loads(response.text)
         return {"arc": arc_data}

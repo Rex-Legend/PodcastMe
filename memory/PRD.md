@@ -1,118 +1,141 @@
-# PodcastMe — Product Requirements Document
+# PodcastMe — PRD (Product Requirements Document)
 
 ## Original Problem Statement
-Create a full-stack app called PodcastMe with a 5-screen flow (HERO → VOICE_SETUP → CONVERSATION → GENERATION → OUTPUT) where a user sets up podcast preferences, talks to an AI producer (Jordan), and gets a fully generated podcast episode package via Gemini.
+Create a full-stack project called PodcastMe. The app features a 7-screen flow where a user sets up podcast preferences, interacts with an AI producer (Jordan), and gets a fully generated podcast episode package via Gemini.
 
-**Stack:** React + Tailwind CSS frontend | Python FastAPI backend | MongoDB | Gemini GenAI | LiveKit (voice, ARM64 fallback to Web Speech API)
+## Product Requirements
+- React + Tailwind CSS (dark mode only)
+- Python FastAPI backend
+- Integrations: Gemini 2.5 Flash (episode generation), Deepgram (TTS/STT), LiveKit (voice, falls back to text gracefully)
+- Lightweight auth via UUID v4 in localStorage
 
-**Design:** Dark mode only — #0A0A0A bg, #141414 cards, #8B5CF6 purple, #EC4899 pink
+## User Personas
+- Podcast hosts who want AI-assisted episode production
+- Content creators who want to publish faster
+- Solo founders/thought leaders building personal brands
 
----
+## Tech Stack
+- Frontend: React, Tailwind CSS, Web Speech API, Recharts
+- Backend: Python FastAPI, Motor (async MongoDB), Gemini GenAI, Deepgram
+- DB: MongoDB (Motor async driver)
+- Auth: UUID v4 in localStorage (`podcastme_user_id`)
 
 ## Architecture
-
 ```
 /app/
 ├── backend/
-│   ├── agent.py            # LiveKit Agent (fallback state - ARM64 incompatible)
-│   ├── server.py           # FastAPI — all endpoints
-│   └── .env
+│   ├── server.py    # FastAPI app (all routes)
+│   └── .env         # GEMINI_API_KEY, DEEPGRAM_API_KEY, LIVEKIT_*
 ├── frontend/
 │   ├── src/
 │   │   ├── screens/
-│   │   │   ├── HeroScreen.jsx           # Landing + episode history
-│   │   │   ├── VoiceSetupScreen.jsx     # Show prefs form
-│   │   │   ├── ConversationScreen.jsx   # 8-question Q&A with Jordan
-│   │   │   ├── ReviewScreen.jsx         # Edit answers before generation
-│   │   │   ├── GenerationScreen.jsx     # Loading screen + Gemini call
-│   │   │   └── OutputScreen.jsx         # 9-card bento output + TTS
-│   │   ├── App.js          # 6-screen router
+│   │   │   ├── HeroScreen.jsx           ✅ Complete
+│   │   │   ├── VoiceSetupScreen.jsx     ✅ Complete (w/ new fields)
+│   │   │   ├── ArcBuilderScreen.jsx     ✅ NEW - 3-act optional arc builder
+│   │   │   ├── ConversationScreen.jsx   ✅ Complete (dynamic Qs + follow-up)
+│   │   │   ├── ReviewScreen.jsx         ✅ Complete (devil's advocate)
+│   │   │   ├── GenerationScreen.jsx     ✅ Complete
+│   │   │   ├── OutputScreen.jsx         ✅ Complete (hook variants, social pack, emotional arc, MP3, readability, fact-check, DA)
+│   │   │   └── DashboardScreen.jsx      ✅ NEW - Recharts dashboard
+│   │   ├── App.js                       ✅ UUID, 8-screen routing, floating Dashboard btn
 │   │   └── index.css
 │   └── .env
-└── README.md
 ```
 
-**Screen flow:** HERO → VOICE_SETUP → CONVERSATION → REVIEW → GENERATION → OUTPUT
+## Screen Flow
+`HERO → VOICE_SETUP → ARC_BUILDER → CONVERSATION → REVIEW → GENERATION → OUTPUT`  
+Dashboard accessible from floating button on most screens.
 
----
+## Implemented Features (as of Feb 2026)
 
-## Key API Endpoints
+### Phase 1 — Core App (Session 1-3)
+- ✅ 5-screen flow with Jordan AI producer
+- ✅ Web Speech API voice recording + text fallback
+- ✅ Gemini 2.5 Flash episode generation (9 fields: title, hook, script, show_notes, tags, cta, listener_persona, audiogram_script, tweet_copy)
+- ✅ MongoDB episode storage + history
+- ✅ All 10 P0 Fixes (scroll sync, demo mode, regeneration, etc.)
+- ✅ "Polish for Audio" + TTS Marker Engine (`[PAUSE]`, `[EMPHASIS]`, `[ENERGY UP]`, `[SLOWER]`, `[BEAT]`)
+- ✅ Custom TTS Engine with sentence-level highlighting
+- ✅ Section regeneration
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /api/ | Health check |
-| POST | /api/livekit-token | LiveKit JWT token |
-| POST | /api/generate-episode | Full Gemini generation (9 sections) |
-| GET | /api/episodes | Episode history (last 5, MongoDB) |
-| POST | /api/regenerate-section | Regenerate one section of an episode |
+### Phase 2 — 25-Feature Mega Upgrade (Session 4, Feb 2026)
+- ✅ UUID v4 `user_id` in localStorage (passed to all backend calls)
+- ✅ ArcBuilderScreen — optional 3-act emotional arc builder (always with "Skip →")
+- ✅ DashboardScreen — Recharts bar chart, episode stats, history list
+- ✅ VoiceSetupScreen expanded: topic (required), output language (EN/ES/FR/PT), guest mode toggle, sponsor toggle, listener persona hint, competitor URL
+- ✅ ConversationScreen: dynamic questions from `/api/generate-questions` based on topic, follow-up logic (< 40 words triggers follow-up via `/api/followup-question`)
+- ✅ ReviewScreen: Devil's Advocate button per answer card
+- ✅ OutputScreen: Hook Variants card (3 tabs), Social Pack card (LinkedIn/Newsletter/Quote/etc.), Emotional Arc chart (Recharts), MP3 Download (Deepgram TTS), Live Readability Score (Flesch-Kincaid), Fact-Check warning badges, Challenge Script button, Confidence score badges
+- ✅ Updated MongoDB schema: user_id, topic, key_positions, tags, controversy_level, output_language, archetype, full_output, controversy_confirmed, has_guest, guest_name, has_sponsor, sponsor_name
+- ✅ Updated generate-episode prompt: +hook_variants, +section_confidence, +social_pack (12 fields total)
+- ✅ 11 new API endpoints: generate-questions, followup-question, devils-advocate, emotional-arc, generate-audio, controversy-preview, simulate-answers, analyze-competitor, series-plan, simulate-audience, episode-history
+- ✅ Gemini retry logic with exponential backoff (for 503 errors)
+- ✅ HeroScreen "View Podcast Dashboard →" link + floating global dashboard button
 
----
+## API Endpoints
+- `POST /api/generate-episode` — main generation (12 fields)
+- `POST /api/polish-script-for-audio` — adds TTS markers
+- `POST /api/regenerate-section` — regenerate single field
+- `POST /api/generate-questions` — topic-specific interview questions
+- `POST /api/followup-question` — follow-up if answer < 40 words
+- `POST /api/devils-advocate` — counterpoint for paragraph/answer
+- `POST /api/emotional-arc` — emotional arc data for Recharts
+- `POST /api/generate-audio` — Deepgram TTS → MP3 download
+- `POST /api/controversy-preview` — preview controversial angle
+- `POST /api/simulate-answers` — simulate demo answers
+- `POST /api/analyze-competitor` — competitor URL analysis
+- `POST /api/series-plan` — 6-episode series planner
+- `POST /api/simulate-audience` — simulate audience reactions
+- `GET /api/episode-history` — filtered by user_id
 
-## DB Schema (MongoDB `episodes` collection)
-
+## MongoDB Schema (`episodes` collection)
 ```json
 {
   "id": "uuid",
-  "user_prefs": { "name", "show_name", "archetype", "energy_word", "controversy_level" },
-  "episode": { "title", "hook", "script", "show_notes", "tags", "cta", "listener_persona", "audiogram_script", "tweet_copy" },
-  "created_at": "ISO timestamp"
+  "user_id": "uuid-from-localstorage",
+  "topic": "string",
+  "title": "string",
+  "key_positions": [],
+  "tags": [],
+  "controversy_level": 5,
+  "output_language": "en",
+  "archetype": "string",
+  "full_output": {},
+  "controversy_confirmed": false,
+  "has_guest": false,
+  "guest_name": "string",
+  "has_sponsor": false,
+  "sponsor_name": "string",
+  "created_at": "ISO datetime",
+  "user_prefs": {},
+  "episode": {}
 }
 ```
 
----
-
-## What's Been Implemented
-
-### Phase 1 — Core MVP (Feb 2026)
-- 5-screen flow with complete routing
-- Voice setup form (show name, archetype, energy word, controversy slider)
-- Conversation screen with 8 Jordan questions
-- Gemini 2.5-flash generation of 9 episode sections
-- Output screen with bento grid of all content
-- MongoDB persistence of episodes
-
-### Phase 2 — P0 UI Fixes (Feb 2026)
-- Text fallback for voice (LiveKit ARM64 incompatible on preview env)
-- Demo Mode button auto-fills all 8 questions  
-- OutputScreen mobile responsiveness
-- Prominent TTS playback UI with sentence highlighting
-
-### Phase 3 — 10 Fixes Upgrade (Apr 2026)
-- **Fix 1:** Question arrays unified (ConversationScreen.jsx + agent.py word-for-word match)
-- **Fix 2:** Controversy level → hard behavioral rules in Gemini system prompt (not context string)
-- **Fix 3:** Archetype → hard behavioral rules in Gemini system prompt (6 archetypes with specific writing instructions)
-- **Fix 4:** TTS preprocessor strips `[STAGE DIRECTIONS]`, converts `...` → 500ms pause, `— wait —` → 1200ms pause via sequential SpeechSynthesisUtterance objects
-- **Fix 5:** sessionStorage persists answers before API call; error state has "Try Again" (retryCount++) and "← Edit Answers" (onBack) buttons
-- **Fix 6:** 3 demo topic pills (AI Ethics / Mental Health / Future of Work) inline with Run Demo button; selected pill has purple border
-- **Fix 7:** ReviewScreen between CONVERSATION and GENERATION — localAnswers state, auto-resize textareas, edit without mutating parent until "Generate Episode →"
-- **Fix 8:** Jordan speaks each question via speechSynthesis on qIndex change; mute toggle near avatar (default unmuted)
-- **Fix 9:** POST /api/regenerate-section endpoint + Regenerate button on each OutputCard; updates in localEpisode state without affecting other cards
-- **Polish for Audio:** POST /api/polish-script-for-audio + Polish for Audio button (pink) on the Script card — transforms raw script to production-ready audio script with markers ([PAUSE], [EMPHASIS], [ENERGY UP], [BEAT], [SLOWER]); user-triggered, non-destructive
-- **TTS Marker Engine:** startTTS parses production markers inline — [PAUSE X]=Xs silence, [BEAT]=800ms comedic pause, [EMPHASIS]=pitch 1.15+vol 1.0, [ENERGY UP]=pitch 1.25+vol 1.0, [SLOWER]=rate 0.75; backward-compatible with old "..." and "— wait —" style pauses; shows "✨ Playing with production markers" indicator during polished playback
-- **Fix 10:** GET /api/episodes endpoint + episode history on HeroScreen; silent fail if empty
-
----
-
-## Known Issues / Blocked
-
-- **LiveKit ARM64:** `liblivekit_ffi.so: undefined symbol: __arm_tpidr2_save` — blocked by hardware. Mitigated by Web Speech API fallback in frontend.
-- **Transient Gemini 500:** Occasional cold-start error on gemini-2.5-flash (not consistently reproducible). Self-resolves on retry.
-
----
+## Known Issues / Constraints
+- LiveKit ARM64 crash on backend (expected). App works fully in text/Web Speech fallback mode.
+- Gemini free tier: 20 req/day for `gemini-2.5-flash`. Paid tier has no functional impact on code.
+- Auth is lightweight UUID in localStorage (no real auth system).
 
 ## Prioritized Backlog
 
-### P1 (Next Sprint)
-- Add data-testid to VoiceSetupScreen inputs (show-name-input, energy-word-input, archetype-select)
-- Mobile viewport testing and fixes for ConversationScreen top bar overflow
+### P0 (Critical)
+- None currently. All P0 features from the 25-feature upgrade are implemented.
 
-### P2
-- Social sharing (Open Graph meta tags for episode)
-- PDF/ZIP export of full episode package
-- User accounts / saved episode library
+### P1 (High Value)
+- Live controversy score indicator in ConversationScreen (show running controversy score as user answers)
+- Competitor analysis UI in VoiceSetupScreen (show gaps/opportunities)
+- Series Planner UI (show 6-episode plan on Dashboard)
+- Audience Simulation UI in OutputScreen (show 4 personas reacting)
 
-### P3 / Future
-- Spotify publishing integration
-- LiveKit fix when x86 environment available
-- Episode templates / pre-set topics
-- Analytics dashboard (listen count, copy count)
+### P2 (Nice to Have)
+- Real auth (JWT or Google OAuth)
+- Episode sharing (public URL)
+- Episode editing UI (edit script directly in OutputScreen)
+- Transcript export (PDF/DOCX)
+- Podcast RSS feed generation
+- Multi-language UI (not just multi-language output)
+
+## Test Credentials
+No auth required. App uses UUID v4 in localStorage.
+Backend requires: GEMINI_API_KEY, DEEPGRAM_API_KEY (both in /app/backend/.env)
