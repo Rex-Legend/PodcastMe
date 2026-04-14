@@ -20,7 +20,7 @@ const PARTICLES = [
   { x: "77%",  y: "35%", size: 3, color: "#EC4899", duration: "7s",  delay: "3.7s" },
 ];
 
-export default function HeroScreen({ onStart, onLoadEpisode }) {
+export default function HeroScreen({ onStart, onLoadEpisode, onDashboard }) {
   const containerRef = useRef(null);
   const [recentEpisodes, setRecentEpisodes] = useState([]);
 
@@ -209,7 +209,7 @@ export default function HeroScreen({ onStart, onLoadEpisode }) {
         </p>
 
         {/* CTA */}
-        <div className="fade-in-up" style={{ animationDelay: "0.5s", opacity: 0 }}>
+        <div className="fade-in-up" style={{ animationDelay: "0.5s", opacity: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
           <button
             data-testid="start-episode-button"
             onClick={onStart}
@@ -218,6 +218,15 @@ export default function HeroScreen({ onStart, onLoadEpisode }) {
           >
             Start My Episode
           </button>
+          {onDashboard && (
+            <button
+              data-testid="hero-dashboard-btn"
+              onClick={onDashboard}
+              style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em", textDecoration: "underline", textDecorationColor: "rgba(107,114,128,0.4)" }}
+            >
+              View Podcast Dashboard →
+            </button>
+          )}
         </div>
 
         {/* Stats */}
