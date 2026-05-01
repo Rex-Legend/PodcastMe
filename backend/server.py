@@ -1,11 +1,12 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Response
 from dotenv import load_dotenv
 import httpx
+import re
+import base64
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from google import genai
 from google.genai import types
-from livekit import api as lk_api
 import os
 import json
 import uuid
@@ -29,12 +30,9 @@ mongo_url = os.environ["MONGO_URL"]
 db_client = AsyncIOMotorClient(mongo_url)
 db = db_client[os.environ["DB_NAME"]]
 
-# LiveKit
-LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
-LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
-LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
+RESEMBLE_API_KEY = os.environ.get("RESEMBLE_API_KEY", "")
+RESEMBLE_VOICE_UUID = os.environ.get("RESEMBLE_VOICE_UUID", "55592656")
 
 
 async def gemini_with_retry(genai_client, model: str, contents, config, max_retries: int = 2):
@@ -54,6 +52,19 @@ async def gemini_with_retry(genai_client, model: str, contents, config, max_retr
                 continue
             raise
     raise last_err
+
+def clean_script_for_tts(script: str) -> str:
+    """Strip TTS production markers and truncate for audio generation."""
+    text = re.sub(r'\[PAUSE \d+-?\d* seconds?\]', '... ', script)
+    text = re.sub(r'\[BEAT\]', '... ', text)
+    text = re.sub(r'\[ENERGY UP\]', '', text)
+    text = re.sub(r'\[SLOWER\]', '', text)
+    text = re.sub(r'\[EMPHASIS\]\s*(\w+)', lambda m: m.group(1).upper(), text)
+    text = re.sub(r'\[SFX:.*?\]', '', text)
+    text = re.sub(r'\[.*?\]', '', text)
+    text = re.sub(r'[ \t]+', ' ', text).strip()
+    return text[:2000]
+
 
 ARCHETYPE_RULES = {
     "Educator": (
@@ -179,11 +190,6 @@ Return ONLY valid JSON (no markdown, no triple backticks) with these exact keys:
 {_JSON_OUTPUT_SPEC}"""
 
 
-class LiveKitTokenRequest(BaseModel):
-    participant_name: str = "Podcast Host"
-    user_prefs: dict = {}
-
-
 class EpisodeAnswer(BaseModel):
     question: str
     answer: str
@@ -264,38 +270,6 @@ class AnalyzeCompetitorRequest(BaseModel):
 @api_router.get("/")
 async def root():
     return {"message": "PodcastMe API v1", "status": "running"}
-
-
-@api_router.post("/livekit-token")
-async def get_livekit_token(request: LiveKitTokenRequest):
-    if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
-        raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
-    try:
-        room_name = f"podcast-{str(uuid.uuid4())[:8]}"
-        identity = f"user-{str(uuid.uuid4())[:8]}"
-
-        token = lk_api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-        token.with_identity(identity)
-        token.with_name(request.participant_name)
-        token.with_metadata(json.dumps(request.user_prefs))
-        token.with_grants(
-            lk_api.VideoGrants(
-                room_join=True,
-                room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-            )
-        )
-
-        logger.info(f"Token generated for room: {room_name}, participant: {request.participant_name}")
-        return {
-            "server_url": LIVEKIT_URL,
-            "participant_token": token.to_jwt(),
-            "room_name": room_name,
-        }
-    except Exception as e:
-        logger.error(f"Token generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @api_router.post("/generate-episode")
@@ -707,36 +681,75 @@ Return ONLY the JSON array."""
 
 @api_router.post("/generate-audio")
 async def generate_audio(request: GenerateAudioRequest):
-    if not DEEPGRAM_API_KEY:
-        raise HTTPException(status_code=500, detail="DEEPGRAM_API_KEY not configured")
+    if not RESEMBLE_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="RESEMBLE_API_KEY not configured"
+        )
     try:
-        import re as _re
-        clean_text = _re.sub(r'\[[A-Z][A-Z\s]*(?:\s\d+)?\]', ' ', request.script)
-        clean_text = _re.sub(r'[ \t]+', ' ', clean_text).strip()
-        if len(clean_text) > 2000:
-            clean_text = clean_text[:2000]
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            dg_response = await client.post(
-                f"https://api.deepgram.com/v1/speak?model={request.voice}",
-                headers={
-                    "Authorization": f"Token {DEEPGRAM_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={"text": clean_text},
+        clean_text = clean_script_for_tts(request.script)
+
+        # Try models in order until one works
+        models_to_try = ["chatterbox", "chatterbox-turbo", None]
+        result = None
+        last_error = None
+
+        for model_name in models_to_try:
+            try:
+                payload = {
+                    "voice_uuid": RESEMBLE_VOICE_UUID,
+                    "data": clean_text,
+                    "sample_rate": 44100,
+                    "output_format": "mp3",
+                    "use_hd": False,
+                }
+                if model_name:
+                    payload["model"] = model_name
+
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        "https://f.cluster.resemble.ai/synthesize",
+                        headers={
+                            "Authorization": RESEMBLE_API_KEY,
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("success"):
+                        logger.info(f"Audio generated with model: {model_name}")
+                        break
+
+                logger.warning(f"Model {model_name} failed: {response.status_code}, trying next...")
+                last_error = response.text
+
+            except Exception as e:
+                logger.warning(f"Model {model_name} error: {e}")
+                last_error = str(e)
+                continue
+
+        if not result or not result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"All models failed: {last_error}"
             )
-        if dg_response.status_code != 200:
-            logger.error(f"Deepgram error: {dg_response.status_code}")
-            raise HTTPException(status_code=500, detail=f"Deepgram TTS failed: {dg_response.status_code}")
-        logger.info(f"Audio generated: {len(dg_response.content)} bytes")
+
+        # Decode base64 audio to bytes
+        audio_bytes = base64.b64decode(result["audio_content"])
+        logger.info(f"Audio generated: {len(audio_bytes)} bytes, duration: {result.get('duration')}s")
+
         return Response(
-            content=dg_response.content,
+            content=audio_bytes,
             media_type="audio/mpeg",
             headers={"Content-Disposition": "attachment; filename=podcast_episode.mp3"},
         )
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Generate audio error: {e}")
+        logger.error(f"Resemble AI TTS error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

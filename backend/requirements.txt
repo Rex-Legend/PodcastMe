@@ -61,14 +61,6 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 librt==0.8.1
 litellm==1.80.0
-livekit==1.1.3
-livekit-agents==1.5.1
-livekit-api==1.1.0
-livekit-blingfire==1.1.0
-livekit-plugins-deepgram==1.5.1
-livekit-plugins-google==1.5.1
-livekit-plugins-silero==1.5.1
-livekit-protocol==1.1.3
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mccabe==0.7.0
@@ -132,8 +124,6 @@ s3transfer==0.16.0
 s5cmd==0.2.0
 shellingham==1.5.4
 six==1.17.0
-sniffio==1.3.1
-sounddevice==0.5.5
 starlette==0.37.2
 stripe==14.4.1
 sympy==1.14.0
